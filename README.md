@@ -78,7 +78,7 @@ No email is sent during install, build, or local startup. The reminder page’s 
 
 ## Reminder center and system task
 
-The **提醒事项** page supports one-time, finite-count, and recurring email reminders. Schedules can use an exact date and time, daily, weekly, monthly, or Chinese workdays. Use **同步系统计划** on that page to create or refresh the exact current-user task `\LYJWorkBench-ReminderRunner`; no command needs to be copied into PowerShell. The sync also removes the superseded exact task `\LYJWorkBench-OutboundCheckin` after the new runner is installed, preventing duplicate delivery.
+The **提醒事项** page supports one-time, finite-count, and recurring email reminders. Schedules can use an exact date and time, daily, weekly, monthly, or Chinese workdays. Use **同步系统计划** on that page to create or refresh the exact current-user task `\LYJWorkBench-ReminderRunner`; no command needs to be copied into PowerShell. The task has one non-repeating trigger for the next required reminder wake-up and uses `wscript.exe` to run invisibly. The sync also removes the superseded exact task `\LYJWorkBench-OutboundCheckin`, preventing duplicate delivery.
 
 The home page includes a monthly calendar and a scrollable list of upcoming reminders. Use **更新节假日** on the calendar to refresh the current and next year from the public Chinese holiday dataset. A workday reminder pauses for a year whose calendar has not been synchronized instead of guessing.
 
@@ -103,7 +103,7 @@ powershell -NoProfile -File scripts/uninstall-reminder-task.ps1 -WhatIf
 powershell -NoProfile -File scripts/uninstall-reminder-task.ps1
 ```
 
-The generic runner checks due reminders every minute; changing a reminder does not require reinstalling the task.
+The runner schedules only the next required wake-up. After it runs, it schedules the following wake-up automatically. Creating, changing, or deleting a reminder and updating holiday data also recalculates the task. When no reminder is pending, no reminder task runs. If automatic synchronization fails, saved reminder data is preserved and **同步系统计划** remains the manual repair action.
 
 ## Local data
 

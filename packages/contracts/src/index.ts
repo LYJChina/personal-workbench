@@ -257,7 +257,8 @@ export const SchedulerStatusSchema = z.object({
   installed: z.boolean(),
   synchronized: z.boolean(),
   taskName: z.literal("LYJWorkBench-ReminderRunner"),
-  message: z.string()
+  message: z.string(),
+  nextRun: z.string().datetime().nullable().optional()
 });
 
 export type ApiError = z.infer<typeof ApiErrorSchema>;

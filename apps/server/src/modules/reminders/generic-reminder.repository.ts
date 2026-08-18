@@ -24,6 +24,11 @@ interface AttemptRow {
   error_category: ReminderFailureCategory | null; recipient: string; subject: string; body: string;
 }
 
+export interface ReminderAttemptState {
+  status: AttemptRow["status"];
+  attemptedAt: Date;
+}
+
 export class GenericReminderRepository {
   public constructor(
     private readonly database: Database.Database,
@@ -135,6 +140,14 @@ export class GenericReminderRepository {
     return Boolean(this.database.prepare(`
       SELECT 1 FROM generic_reminder_attempts WHERE reminder_id = ? AND scheduled_for = ? AND status = 'success'
     `).get(id, scheduledFor));
+  }
+
+  public attemptFor(id: string, scheduledFor: string): ReminderAttemptState | null {
+    const row = this.database.prepare(`
+      SELECT status, attempted_at FROM generic_reminder_attempts
+      WHERE reminder_id = ? AND scheduled_for = ?
+    `).get(id, scheduledFor) as { status: AttemptRow["status"]; attempted_at: string } | undefined;
+    return row ? { status: row.status, attemptedAt: new Date(row.attempted_at) } : null;
   }
 
   public acquireClaim(id: string, scheduledFor: string, token: string, now: Date, expiresAt: Date): boolean {

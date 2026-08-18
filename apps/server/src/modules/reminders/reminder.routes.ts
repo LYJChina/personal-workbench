@@ -49,6 +49,15 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     secretStore: dependencies.secretStore,
     loadSettings: (configured) => settingsFor(response).getMailSettings(configured)
   });
+  const scheduler = dependencies.scheduler ?? ReminderSchedulerService.fromCurrentModule();
+  const resynchronize = async (): Promise<void> => {
+    if (!dependencies.scheduler) return;
+    try {
+      await dependencies.scheduler.sync();
+    } catch {
+      console.error("Reminder scheduler synchronization failed");
+    }
+  };
 
   router.get("/reminders/outbound-checkin", (_request, response) => {
     response.json(remindersFor(response).get("outbound-checkin", now()));
@@ -79,8 +88,6 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
   router.get("/reminders", (_request, response) => {
     response.json({ items: genericFor(response).list(now()) });
   });
-  const scheduler = dependencies.scheduler ?? ReminderSchedulerService.fromCurrentModule();
-
   router.get("/reminder-scheduler/status", handle(async (_request, response) => {
     response.json(await scheduler.status());
   }));
@@ -89,11 +96,13 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     response.json(await scheduler.sync());
   }));
 
-  router.post("/reminders", (request, response) => {
+  router.post("/reminders", handle(async (request, response) => {
     const parsed = GenericReminderInputSchema.safeParse(request.body);
     if (!parsed.success) return errorResponse(response, 400, "Reminder validation failed", "VALIDATION_ERROR");
-    response.status(201).json(genericFor(response).create(parsed.data, now()));
-  });
+    const reminder = genericFor(response).create(parsed.data, now());
+    await resynchronize();
+    response.status(201).json(reminder);
+  }));
 
   router.get("/reminder-attempts", (_request, response) => {
     response.json({ items: genericFor(response).listAttempts() });
@@ -111,24 +120,27 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     }
   });
 
-  router.put("/reminders/:id", (request, response) => {
+  router.put("/reminders/:id", handle(async (request, response) => {
     const parsed = GenericReminderInputSchema.safeParse(request.body);
     if (!parsed.success) return errorResponse(response, 400, "Reminder validation failed", "VALIDATION_ERROR");
     try {
-      response.json(genericFor(response).update(String(request.params.id), parsed.data, now()));
+      const reminder = genericFor(response).update(String(request.params.id), parsed.data, now());
+      await resynchronize();
+      response.json(reminder);
     } catch {
       errorResponse(response, 404, "Reminder not found", "NOT_FOUND");
     }
-  });
+  }));
 
-  router.delete("/reminders/:id", (request, response) => {
+  router.delete("/reminders/:id", handle(async (request, response) => {
     try {
       genericFor(response).delete(String(request.params.id));
+      await resynchronize();
       response.status(204).end();
     } catch {
       errorResponse(response, 404, "Reminder not found", "NOT_FOUND");
     }
-  });
+  }));
 
   router.post("/reminders/:id/test", handle(async (request, response) => {
     let reminder;

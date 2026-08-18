@@ -66,7 +66,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
     now: options.now,
     scheduler: options.reminderScheduler
   }));
-  app.use("/api", createHolidayRouter(paths, { loader: options.holidayYearLoader, now: options.now }));
+  app.use("/api", createHolidayRouter(paths, {
+    loader: options.holidayYearLoader,
+    now: options.now,
+    scheduler: options.reminderScheduler
+  }));
   app.use("/api", createSettingsRouter(paths, {
     secretStore,
     allowLoopbackHttp: options.allowLoopbackHttp,
