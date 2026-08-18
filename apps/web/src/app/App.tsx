@@ -1,32 +1,15 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, Route, Routes } from "react-router-dom";
-import type { ProfileResponse, ProfileUpdate } from "@workbench/contracts";
-import { ProfileCard } from "../features/profile/ProfileCard";
+import { Outlet, Route, Routes } from "react-router-dom";
+import type { DashboardLayout } from "@workbench/contracts";
+import { EditableDashboard } from "../features/dashboard/EditableDashboard";
 import { api } from "../lib/api";
-
-const navigation = [
-  { to: "/", label: "我的主页" },
-  { to: "/ai-office", label: "AI 办公" },
-  { to: "/reminders", label: "提醒事项" },
-  { to: "/settings", label: "设置" }
-];
+import { Sidebar } from "./Sidebar";
+import { ThemeProvider, useTheme } from "./ThemeProvider";
 
 function Shell() {
   return (
     <div className="app-shell">
-      <aside aria-label="主导航" className="sidebar">
-        <h1>LYJ Workbench</h1>
-        <nav>
-          {navigation.map((item) => (
-            <Link key={item.to} to={item.to}>
-              {item.label}
-            </Link>
-          ))}
-          <span aria-disabled="true" className="disabled-nav-item">
-            密码保险箱 <small>即将推出</small>
-          </span>
-        </nav>
-      </aside>
+      <Sidebar />
       <main>
         <Outlet />
       </main>
@@ -34,50 +17,42 @@ function Shell() {
   );
 }
 
+function HomePage() {
+  const [layout, setLayout] = useState<DashboardLayout[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getLayout().then(setLayout).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "工作台加载失败"));
+  }, []);
+
+  async function saveLayout(nextLayout: DashboardLayout[]) {
+    setLayout(await api.updateLayout(nextLayout));
+  }
+
+  return <>{error && <p role="alert">{error}</p>}{layout.length > 0 && <EditableDashboard initialLayout={layout} onSave={saveLayout} />}</>;
+}
+
+function SettingsPage() {
+  const { theme, setTheme } = useTheme();
+  return <section><h2>设置</h2><label>主题 <select value={theme} onChange={(event) => void setTheme(event.target.value as typeof theme)}><option value="light">浅色</option><option value="dark">深色</option></select></label></section>;
+}
+
 function Page({ title }: { title: string }) {
   return <h2>{title}</h2>;
 }
 
-const emptyProfile: ProfileResponse = {
-  name: "",
-  birthday: "",
-  employeeNumber: "",
-  customFields: [],
-  photoFilename: null
-};
-
-function HomePage() {
-  const [profile, setProfile] = useState<ProfileResponse>(emptyProfile);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.getProfile().then(setProfile).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "个人信息加载失败"));
-  }, []);
-
-  async function saveProfile(input: ProfileUpdate) {
-    const saved = await api.updateProfile(input);
-    setProfile(saved);
-  }
-
-  async function uploadPhoto(photo: File) {
-    const saved = await api.uploadProfilePhoto(photo);
-    setProfile(saved);
-    return saved;
-  }
-
-  return <>{error && <p role="alert">{error}</p>}<ProfileCard initialProfile={profile} onSave={saveProfile} onUploadPhoto={uploadPhoto} /></>;
-}
-
 export function App() {
   return (
-    <Routes>
-      <Route element={<Shell />}>
-        <Route index element={<HomePage />} />
-        <Route path="ai-office" element={<Page title="AI 办公" />} />
-        <Route path="ai-office/daily-report" element={<Page title="每日报告" />} />
-        <Route path="reminders" element={<Page title="提醒事项" />} />
-        <Route path="settings" element={<Page title="设置" />} />
-      </Route>
-    </Routes>
+    <ThemeProvider>
+      <Routes>
+        <Route element={<Shell />}>
+          <Route index element={<HomePage />} />
+          <Route path="ai-office" element={<Page title="AI 办公" />} />
+          <Route path="ai-office/daily-report" element={<Page title="每日报告" />} />
+          <Route path="reminders" element={<Page title="提醒事项" />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+      </Routes>
+    </ThemeProvider>
   );
 }

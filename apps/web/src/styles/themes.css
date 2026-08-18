@@ -1,0 +1,15 @@
+[data-theme="light"] {
+  --page-background: #ffffff;
+  --surface-background: #f8fafc;
+  --text-color: #1f2937;
+  --border-color: #e2e8f0;
+  --muted-text-color: #64748b;
+}
+
+[data-theme="dark"] {
+  --page-background: #111827;
+  --surface-background: #1f2937;
+  --text-color: #f8fafc;
+  --border-color: #475569;
+  --muted-text-color: #cbd5e1;
+}

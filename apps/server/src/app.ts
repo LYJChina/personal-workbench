@@ -2,6 +2,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { HealthResponseSchema } from "@workbench/contracts";
 import { resolveAppPaths } from "./config/paths.js";
 import { createProfileRouter, isPhotoUploadLimitError } from "./modules/profile/profile.routes.js";
+import { createPreferencesRouter } from "./modules/preferences/preferences.routes.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -18,6 +19,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   });
 
   app.use("/api", createProfileRouter(paths));
+  app.use("/api", createPreferencesRouter(paths));
 
   app.use((_request, response) => {
     response.status(404).json({ error: { message: "Not Found", code: "NOT_FOUND" } });

@@ -1,5 +1,7 @@
+@import "./themes.css";
+
 :root {
-  color: #1f2937;
+  color: var(--text-color);
   font-family: "Microsoft YaHei", system-ui, sans-serif;
 }
 
@@ -9,6 +11,8 @@
 
 body {
   margin: 0;
+  background: var(--page-background);
+  color: var(--text-color);
 }
 
 .app-shell {
@@ -18,8 +22,8 @@ body {
 }
 
 .sidebar {
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
+  background: var(--surface-background);
+  border-right: 1px solid var(--border-color);
   padding: 1.5rem;
 }
 
@@ -35,10 +39,31 @@ body {
 }
 
 .disabled-nav-item {
-  color: #94a3b8;
+  color: var(--muted-text-color);
   cursor: not-allowed;
 }
 
 main {
   padding: 2rem;
+}
+
+.dashboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-module {
+  background: var(--surface-background);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.sidebar-editor-list {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
 }

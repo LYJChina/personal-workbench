@@ -10,9 +10,11 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@testing-library/user-event": "^14.6.4",
     "@workbench/contracts": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-grid-layout": "^2.2.4",
     "react-router-dom": "^7.3.0"
   },
   "devDependencies": {

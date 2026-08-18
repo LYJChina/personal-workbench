@@ -1,4 +1,4 @@
-import type { ProfileResponse, ProfileUpdate } from "@workbench/contracts";
+import type { DashboardLayout, NavigationItem, ProfileResponse, ProfileUpdate, Theme } from "@workbench/contracts";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, init);
@@ -20,5 +20,23 @@ export const api = {
     const form = new FormData();
     form.append("photo", photo);
     return requestJson<ProfileResponse>("/profile/photo", { method: "POST", body: form });
-  }
+  },
+  getLayout: () => requestJson<DashboardLayout[]>("/preferences/layout"),
+  updateLayout: (layout: DashboardLayout[]) => requestJson<DashboardLayout[]>("/preferences/layout", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(layout)
+  }),
+  getNavigation: () => requestJson<NavigationItem[]>("/preferences/navigation"),
+  updateNavigation: (navigation: NavigationItem[]) => requestJson<NavigationItem[]>("/preferences/navigation", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(navigation)
+  }),
+  getTheme: () => requestJson<{ theme: Theme }>("/preferences/theme"),
+  updateTheme: (theme: Theme) => requestJson<{ theme: Theme }>("/preferences/theme", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme })
+  })
 };
