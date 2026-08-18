@@ -133,4 +133,33 @@ describe("AI polish API", () => {
 
     expect(rows).toEqual([{ legacy_daily_report_id: 7, kind: "daily_report", content: "旧日报正文" }]);
   });
+
+  it("upgrades the original kind constraint so custom results can be saved without losing history", async () => {
+    const databasePath = join(dataDir, "workbench.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(`
+      CREATE TABLE ai_polish_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL CHECK (kind IN ('daily_report', 'leadership', 'translation', 'general')),
+        primary_text TEXT NOT NULL,
+        secondary_text TEXT NOT NULL,
+        system_prompt TEXT NOT NULL,
+        content TEXT NOT NULL,
+        model TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO ai_polish_records
+        (kind, primary_text, secondary_text, system_prompt, content, model, created_at, updated_at)
+        VALUES ('general', '旧内容', '', '旧提示词', '旧结果', 'deepseek-chat', '2026-08-18T08:00:00.000Z', '2026-08-18T08:00:00.000Z');
+    `);
+    legacy.close();
+
+    const app = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
+    await request(app).post("/api/ai-polish/generate").send({ kind: "custom", primaryText: "新内容", secondaryText: "", systemPrompt: "自定义提示词" }).expect(201);
+    await request(app).get("/api/ai-polish").expect(200).expect((response) => {
+      expect(response.body.map((record: { kind: string }) => record.kind)).toEqual(["custom", "general"]);
+    });
+  });
 });

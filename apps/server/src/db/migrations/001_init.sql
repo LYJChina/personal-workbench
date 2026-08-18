@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
 
 CREATE TABLE IF NOT EXISTS ai_polish_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL CHECK (kind IN ('daily_report', 'leadership', 'translation', 'general')),
+  kind TEXT NOT NULL CHECK (kind IN ('daily_report', 'leadership', 'translation', 'general', 'custom')),
   primary_text TEXT NOT NULL,
   secondary_text TEXT NOT NULL,
   system_prompt TEXT NOT NULL,
