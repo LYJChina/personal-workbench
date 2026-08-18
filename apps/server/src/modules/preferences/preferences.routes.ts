@@ -10,11 +10,13 @@ const layoutInputSchema = DashboardLayoutSchema.array().min(1).superRefine((item
   }
 });
 
+const seededNavigationIds = ["home", "ai-office", "reminders", "vault-coming-soon", "settings"] as const;
+
 const navigationInputSchema = NavigationItemSchema.array().superRefine((items, context) => {
   const ids = items.map((item) => item.id);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", message: "Navigation IDs must be unique" });
-  for (const required of ["home", "settings"] as const) {
-    if (!ids.includes(required)) context.addIssue({ code: "custom", message: `${required} cannot be deleted` });
+  for (const id of seededNavigationIds) {
+    if (!ids.includes(id)) context.addIssue({ code: "custom", message: `${id} must be preserved` });
   }
 });
 

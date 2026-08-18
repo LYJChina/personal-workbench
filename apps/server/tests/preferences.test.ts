@@ -69,6 +69,19 @@ describe("workspace preferences API", () => {
     expect(response.body.find((item: { id: string }) => item.id === "vault-coming-soon")).toMatchObject({ disabled: true });
   });
 
+  it("rejects navigation saves that omit seeded optional items", async () => {
+    const app = createApp({ dataDir: tempDir });
+    const response = await request(app).put("/api/preferences/navigation").send([
+      { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },
+      { id: "reminders", label: "提醒事项", path: "/reminders", position: 1, visible: true, disabled: false },
+      { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 2, visible: true, disabled: true },
+      { id: "settings", label: "设置", path: "/settings", position: 3, visible: true, disabled: false }
+    ]);
+
+    expect(response.status).toBe(400);
+    expect((await request(app).get("/api/preferences/navigation")).body.map((item: { id: string }) => item.id)).toEqual(["home", "ai-office", "reminders", "vault-coming-soon", "settings"]);
+  });
+
   it("rejects unknown modules, duplicate navigation IDs, invalid coordinates, and unsupported themes", async () => {
     const app = createApp({ dataDir: tempDir });
 

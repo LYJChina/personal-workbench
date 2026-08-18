@@ -7,8 +7,6 @@ interface SidebarEditorProps {
   onClose?: () => void;
 }
 
-const requiredIds = new Set<NavigationItem["id"]>(["home", "settings"]);
-
 function normalize(items: NavigationItem[]): NavigationItem[] {
   return items.map((item, position) => ({ ...item, position, disabled: item.id === "vault-coming-soon" ? true : item.disabled }));
 }
@@ -35,10 +33,6 @@ export function SidebarEditor({ initialItems, onSave, onClose }: SidebarEditorPr
     });
   }
 
-  function remove(id: NavigationItem["id"]) {
-    if (!requiredIds.has(id)) setItems((current) => normalize(current.filter((item) => item.id !== id)));
-  }
-
   async function save() {
     setSaving(true);
     setError(null);
@@ -63,7 +57,6 @@ export function SidebarEditor({ initialItems, onSave, onClose }: SidebarEditorPr
             <button type="button" aria-label={`上移 ${item.label}`} disabled={index === 0} onClick={() => move(item.id, -1)}>上移</button>
             <button type="button" aria-label={`下移 ${item.label}`} disabled={index === items.length - 1} onClick={() => move(item.id, 1)}>下移</button>
             <button type="button" aria-label={`${item.visible ? "隐藏" : "恢复"} ${item.label}`} onClick={() => update(item.id, { visible: !item.visible })}>{item.visible ? "隐藏" : "恢复"}</button>
-            <button type="button" aria-label={`删除 ${item.label}`} disabled={requiredIds.has(item.id)} onClick={() => remove(item.id)}>删除</button>
           </li>
         ))}
       </ul>

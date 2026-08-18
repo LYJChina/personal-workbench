@@ -44,12 +44,12 @@ describe("EditableDashboard", () => {
 });
 
 describe("SidebarEditor", () => {
-  it("can hide, restore, and reorder optional entries but protects required entries", async () => {
+  it("allows optional entries to be hidden, restored, and reordered without offering deletion", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<SidebarEditor initialItems={navigation} onSave={onSave} />);
 
-    expect(screen.getByRole("button", { name: "删除 我的主页" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "删除 AI 办公" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "隐藏 AI 办公" }));
     await user.click(screen.getByRole("button", { name: "恢复 AI 办公" }));
     await user.click(screen.getByRole("button", { name: "下移 AI 办公" }));
