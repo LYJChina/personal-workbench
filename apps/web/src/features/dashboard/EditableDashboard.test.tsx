@@ -19,6 +19,24 @@ const navigation: NavigationItem[] = [
 ];
 
 describe("EditableDashboard", () => {
+  it("shows only a compact daily quote in the dashboard header", () => {
+    render(<EditableDashboard initialLayout={profileLayout} onSave={vi.fn()} now={new Date(2026, 7, 18)} />);
+
+    expect(screen.queryByText("PERSONAL SPACE")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的主页" })).not.toBeInTheDocument();
+    expect(screen.getByText("及时当勉励，岁月不待人。")).toBeVisible();
+    expect(screen.getByText("——陶渊明")).toBeVisible();
+    expect(screen.getByRole("button", { name: "编辑工作台" })).toBeVisible();
+  });
+
+  it("changes the quote when the local calendar date changes", () => {
+    const { rerender } = render(<EditableDashboard initialLayout={profileLayout} onSave={vi.fn()} now={new Date(2026, 7, 18)} />);
+
+    expect(screen.getByText("及时当勉励，岁月不待人。")).toBeVisible();
+    rerender(<EditableDashboard initialLayout={profileLayout} onSave={vi.fn()} now={new Date(2026, 7, 19)} />);
+    expect(screen.getByText("纸上得来终觉浅，绝知此事要躬行。")).toBeVisible();
+  });
+
   it("locks the grid until editing and persists when editing is complete", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);

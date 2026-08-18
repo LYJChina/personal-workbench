@@ -62,7 +62,7 @@ describe("complete application navigation", () => {
 
     render(<MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>);
 
-    expect(await screen.findByRole("heading", { name: "我的主页" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "工作台" })).toBeVisible();
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "false");
     await user.click(screen.getByRole("button", { name: "编辑工作台" }));
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "true");
