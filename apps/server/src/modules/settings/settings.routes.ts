@@ -75,6 +75,7 @@ function notConfigured(response: Response): void {
 function isAllowedDeepSeekUrl(value: string, allowLoopbackHttp: boolean): boolean {
   try {
     const url = new URL(value);
+    if (url.username || url.password || url.search || url.hash || value.includes("?") || value.includes("#")) return false;
     if (url.protocol === "https:") return true;
     return allowLoopbackHttp && url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
   } catch {
@@ -101,7 +102,8 @@ export const testDeepSeekConnection: DeepSeekConnectionTester = async (input) =>
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ model: input.model, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }),
-      signal: controller.signal
+      signal: controller.signal,
+      redirect: "manual"
     });
     if (response.status === 401 || response.status === 403) throw new ConnectionTestFailure("auth_failure");
     if (!response.ok) throw new ConnectionTestFailure("unreachable_host");

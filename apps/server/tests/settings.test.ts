@@ -2,10 +2,12 @@ import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
-import { ConnectionTestFailure, type MailConnectionInput, type ProviderConnectionInput } from "../src/modules/settings/settings.routes";
+import { ConnectionTestFailure, testDeepSeekConnection, type MailConnectionInput, type ProviderConnectionInput } from "../src/modules/settings/settings.routes";
 import type { SecretStore } from "../src/platform/dpapi";
 
 class MemorySecretStore implements SecretStore {
@@ -20,6 +22,15 @@ class MemorySecretStore implements SecretStore {
   public async readSecret(name: string): Promise<string | null> {
     return this.secrets.get(name) ?? null;
   }
+}
+
+async function listen(server: Server): Promise<number> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return (server.address() as AddressInfo).port;
+}
+
+async function close(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
 describe("secure settings API", () => {
@@ -126,6 +137,46 @@ describe("secure settings API", () => {
     expect(rejected.status).toBe(400);
     expect(allowed.status).toBe(200);
     expect(nonLoopback.status).toBe(400);
+  });
+
+  it.each([
+    "https://embedded-user:embedded-password@api.deepseek.com/v1",
+    "https://api.deepseek.com/v1?destination=internal",
+    "https://api.deepseek.com/v1#fragment"
+  ])("rejects DeepSeek base URLs containing userinfo, query, or fragment: %s", async (baseUrl) => {
+    const response = await request(createApp({ dataDir: tempDir, secretStore })).put("/api/settings/deepseek").send({
+      baseUrl,
+      model: "deepseek-chat"
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("does not follow a provider redirect to another target", async () => {
+    let targetRequests = 0;
+    const target = createServer((_request, response) => {
+      targetRequests += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end("{}");
+    });
+    const targetPort = await listen(target);
+    const redirect = createServer((_request, response) => {
+      response.writeHead(302, { Location: `http://127.0.0.1:${targetPort}/redirected` });
+      response.end();
+    });
+    const redirectPort = await listen(redirect);
+
+    try {
+      await expect(testDeepSeekConnection({
+        baseUrl: `http://127.0.0.1:${redirectPort}`,
+        model: "deepseek-chat",
+        apiKey: "redirect-test-credential",
+        timeoutMs: 2_000
+      })).rejects.toMatchObject({ category: "unreachable_host" });
+      expect(targetRequests).toBe(0);
+    } finally {
+      await Promise.all([close(redirect), close(target)]);
+    }
   });
 
   it.each([

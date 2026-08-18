@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -17,6 +17,31 @@ async function runAclScript(script: string, target: string): Promise<string> {
     windowsHide: true
   });
   return stdout.trim();
+}
+
+async function grantBuiltInUsersRead(target: string): Promise<void> {
+  await runAclScript(String.raw`
+$file = New-Object System.IO.FileInfo($env:LYJ_WORKBENCH_ACL_TEST_PATH)
+$acl = $file.GetAccessControl()
+$users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule($users, 'Read', 'Allow')
+$acl.AddAccessRule($rule)
+$file.SetAccessControl($acl)
+`, target);
+}
+
+async function accessIdentities(target: string): Promise<string[]> {
+  const identities = await runAclScript(String.raw`
+$file = New-Object System.IO.FileInfo($env:LYJ_WORKBENCH_ACL_TEST_PATH)
+$acl = $file.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+$identities = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value }
+[Console]::Out.Write(($identities -join ','))
+`, target);
+  return [...new Set(identities.split(",").filter(Boolean))];
+}
+
+async function currentUserSid(target: string): Promise<string> {
+  return runAclScript("[Console]::Out.Write([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value)", target);
 }
 
 describeOnWindows("Windows DPAPI secret store", () => {
@@ -55,24 +80,40 @@ describeOnWindows("Windows DPAPI secret store", () => {
     const blobPath = join(tempDir, "secrets", `${secretName}.bin`);
     const store = new WindowsDpapiSecretStore(join(tempDir, "secrets"));
     await store.protectSecret(secretName, "initial disposable value");
-    await runAclScript(String.raw`
-$file = New-Object System.IO.FileInfo($env:LYJ_WORKBENCH_ACL_TEST_PATH)
-$acl = $file.GetAccessControl()
-$users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
-$rule = New-Object System.Security.AccessControl.FileSystemAccessRule($users, 'Read', 'Allow')
-$acl.AddAccessRule($rule)
-$file.SetAccessControl($acl)
-`, blobPath);
+    await grantBuiltInUsersRead(blobPath);
 
     await store.protectSecret(secretName, "replacement disposable value");
 
-    const identities = await runAclScript(String.raw`
-$file = New-Object System.IO.FileInfo($env:LYJ_WORKBENCH_ACL_TEST_PATH)
-$acl = $file.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
-$identities = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value }
-[Console]::Out.Write(($identities -join ','))
-`, blobPath);
-    const currentSid = await runAclScript("[Console]::Out.Write([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value)", blobPath);
-    expect([...new Set(identities.split(",").filter(Boolean))]).toEqual([currentSid]);
+    expect(await accessIdentities(blobPath)).toEqual([await currentUserSid(blobPath)]);
+  });
+
+  it("hardens a broadened existing blob before replacement begins", async () => {
+    const secretsDir = join(tempDir, "secrets");
+    const blobPath = join(secretsDir, `${secretName}.bin`);
+    const store = new WindowsDpapiSecretStore(secretsDir);
+    await store.protectSecret(secretName, "previous protected value");
+    await grantBuiltInUsersRead(blobPath);
+    const interruptedStore = new WindowsDpapiSecretStore(secretsDir, { failurePoint: "after_existing_target_hardened" });
+
+    await expect(interruptedStore.protectSecret(secretName, "uncommitted replacement")).rejects.toThrow("Windows DPAPI operation failed");
+
+    expect(await store.readSecret(secretName)).toBe("previous protected value");
+    expect(await accessIdentities(blobPath)).toEqual([await currentUserSid(blobPath)]);
+    expect(await readdir(secretsDir)).toEqual([`${secretName}.bin`]);
+  });
+
+  it("restores the previous safe blob when final ACL application fails", async () => {
+    const secretsDir = join(tempDir, "secrets");
+    const blobPath = join(secretsDir, `${secretName}.bin`);
+    const store = new WindowsDpapiSecretStore(secretsDir);
+    await store.protectSecret(secretName, "previous protected value");
+    await grantBuiltInUsersRead(blobPath);
+    const interruptedStore = new WindowsDpapiSecretStore(secretsDir, { failurePoint: "before_final_target_acl" });
+
+    await expect(interruptedStore.protectSecret(secretName, "uncommitted replacement")).rejects.toThrow("Windows DPAPI operation failed");
+
+    expect(await store.readSecret(secretName)).toBe("previous protected value");
+    expect(await accessIdentities(blobPath)).toEqual([await currentUserSid(blobPath)]);
+    expect(await readdir(secretsDir)).toEqual([`${secretName}.bin`]);
   });
 });

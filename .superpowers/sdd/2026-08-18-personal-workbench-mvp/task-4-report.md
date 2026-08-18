@@ -30,7 +30,7 @@ Captured before production implementation on 2026-08-18:
 
 The failures were caused by the missing requested behavior, not syntax mistakes or pre-existing regressions.
 
-During self-review, a new replacement-ACL regression test was also observed RED: `pnpm --filter @workbench/server test -- dpapi.test.ts -t "restores a current-user-only ACL"` exited 1 when the first overwrite implementation could not supply a null `File.Replace` backup path, and then correctly exposed that a broadened explicit `BUILTIN\Users` rule survived replacement. The final implementation uses a same-directory encrypted backup for atomic replacement, deletes it immediately, removes every explicit rule, and reapplies only the current user SID.
+During self-review, a new replacement-ACL regression test was also observed RED: `pnpm --filter @workbench/server test -- dpapi.test.ts -t "restores a current-user-only ACL"` exited 1 when the first overwrite implementation could not supply a null `File.Replace` backup path, and then correctly exposed that a broadened explicit `BUILTIN\Users` rule survived replacement. That implementation used a same-directory encrypted backup for atomic replacement, removed every explicit rule, and reapplied only the current user SID. Fix Round 1 below supersedes its original backup-deletion timing.
 
 ## GREEN Evidence
 
@@ -97,7 +97,7 @@ Injected probes exercised every category for both endpoints without external cre
 
 ## Cleanup Evidence
 
-- The Windows DPAPI test explicitly deletes its disposable blob and verifies the path no longer exists. Atomic-overwrite encrypted backups are also deleted immediately and in the failure cleanup path.
+- The Windows DPAPI test explicitly deletes its disposable blob and verifies the path no longer exists. Atomic-overwrite encrypted backups are deleted only after final target ACL verification; the failure path restores the previous blob and leaves no temporary or backup file.
 - Each settings test removes its temporary data directory recursively after execution.
 - No real DeepSeek API key or SMTP password was created, stored, logged, or sent during verification.
 
@@ -105,3 +105,59 @@ Injected probes exercised every category for both endpoints without external cre
 
 - Windows DPAPI `CurrentUser` fails under the restricted sandbox token because that token has no loaded user profile. The same test passes outside the sandbox under the signed-in user and is the relevant production execution context; encryption was not weakened or substituted.
 - Real DeepSeek and SMTP connectivity was deliberately not claimed or exercised because the task supplied no credentials. The injected seams cover success and sanitized error mapping deterministically.
+
+## Fix Round 1 (2026-08-18)
+
+### Findings Addressed
+
+1. DeepSeek base URLs now accept only an HTTPS origin plus path. Userinfo, query delimiters/parameters, and fragments are rejected. The explicit test-only exception still permits loopback HTTP with the same shape restrictions. The production probe sets `redirect: "manual"`; every 3xx is mapped to the existing sanitized `unreachable_host` result without requesting or exposing the `Location` target.
+2. DPAPI overwrite now hardens and verifies the existing target before replacement. Both the old target and new temporary blob therefore have current-user-only DACLs before `File.Replace`. The encrypted backup remains until the final target DACL is applied and verified. Any post-replacement failure removes the new target, restores the previous protected blob, reapplies/verifies its safe ACL, and preserves a safe backup rather than deleting recovery data if restoration itself cannot complete.
+
+### RED Evidence
+
+- `pnpm --filter @workbench/server test -- settings.test.ts`
+  - Exit 1; 4 failed and 17 passed.
+  - Credential-bearing URL, query URL, and fragment URL each returned 200 instead of 400.
+  - The controlled redirect probe resolved successfully because fetch followed the 302 and reached the second local server.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts`
+  - Exit 1; 2 failed and 3 passed.
+  - Both injected interruption cases resolved instead of rejecting because the old implementation had no pre-replacement or post-replacement failure seam and no rollback behavior.
+
+The initial sandboxed settings RED attempt was excluded from TDD evidence because Windows returned `EPERM` before Vitest could collect tests. The identical command outside the sandbox produced the behavior-level failures above.
+
+### GREEN and Verification Evidence
+
+- `pnpm --filter @workbench/server test -- settings.test.ts`
+  - Exit 0; 21 tests passed.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts`
+  - Exit 0; 5 tests passed, including the two interruption/rollback cases.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts settings.test.ts`
+  - Exit 0; 2 files and 26 tests passed.
+- `pnpm --filter @workbench/web test -- SettingsPage.test.tsx`
+  - Exit 0; 1 file and 12 tests passed.
+- `pnpm test`
+  - Exit 0.
+  - Server: 5 files and 39 tests passed.
+  - Web: 4 files and 22 tests passed.
+- `pnpm build`
+  - Exit 0; contracts/server type-check and web production build passed.
+- `pnpm check`
+  - Exit 0 for every workspace package.
+- `git diff --check`
+  - Exit 0; only Windows LF-to-CRLF notices were emitted.
+
+### Covering Tests and Security Reasoning
+
+- `rejects DeepSeek base URLs containing userinfo, query, or fragment` prevents credentials or redirect-like parameters from entering SQLite and the probe boundary.
+- `does not follow a provider redirect to another target` uses two real loopback HTTP servers. The first emits a 302 to the second; the probe returns a sanitized failure and the second server's request count remains zero.
+- `hardens a broadened existing blob before replacement begins` adds `BUILTIN\Users:Read`, injects failure immediately after existing-target hardening, and proves the old secret remains readable only to the current SID with no extra files.
+- `restores the previous safe blob when final ACL application fails` broadens the old DACL, injects failure after atomic replacement and before final target ACL application, then proves the previous plaintext round-trips, the restored DACL contains only the current SID, and the secrets directory contains only the expected blob.
+- The failure seams can only force a sanitized failure; they cannot bypass DPAPI or ACL enforcement and are not exposed through `createApp`.
+
+### Cleanup and Concerns
+
+- Both local redirect-test servers are closed in `finally` even when assertions fail.
+- Every DPAPI test uses a unique temporary directory; rollback tests additionally assert no temporary or backup filename remains.
+- Plaintext test values still travel to PowerShell only through standard input. Failure-point metadata contains no secret and is passed separately through the child environment.
+- CurrentUser DPAPI verification still requires execution outside the restricted sandbox under the signed-in Windows profile. No weaker encryption or ACL fallback was introduced.
+- No real DeepSeek or SMTP credentials were used, and no external provider connection was attempted.
