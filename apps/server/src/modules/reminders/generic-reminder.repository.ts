@@ -30,6 +30,8 @@ export class GenericReminderRepository {
     private readonly calendar: HolidayRepository,
     now: Date = new Date()
   ) {
+    const seeded = this.database.prepare("SELECT 1 FROM app_settings WHERE key = 'generic-reminders-seeded'").get();
+    if (seeded) return;
     const legacy = this.database.prepare(`
       SELECT enabled, local_time, recipient, subject, body FROM reminders WHERE id = 'outbound-checkin'
     `).get() as { enabled: number; local_time: string; recipient: string; subject: string; body: string } | undefined;
@@ -46,6 +48,8 @@ export class GenericReminderRepository {
       legacy?.subject ?? "提交外勤打卡提醒",
       legacy?.body ?? "请提交本周外勤打卡。"
     );
+    this.database.prepare(`INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+      VALUES ('generic-reminders-seeded', '1', ?)`).run(now.toISOString());
   }
 
   private row(id: string): ReminderRow {
