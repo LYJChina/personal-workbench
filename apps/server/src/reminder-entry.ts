@@ -9,6 +9,7 @@ import { WindowsDpapiSecretStore } from "./platform/dpapi.js";
 import { HolidayRepository } from "./modules/calendar/holiday.repository.js";
 import { GenericReminderRepository } from "./modules/reminders/generic-reminder.repository.js";
 import { runGenericReminders } from "./modules/reminders/generic-reminder.runner.js";
+import { nextReminderWake } from "./modules/reminders/reminder-wake.js";
 
 export function parseReminderArguments(arguments_: string[]): "outbound-checkin" {
   if (arguments_.length === 2 && arguments_[0] === "--reminder" && arguments_[1] === "outbound-checkin") return "outbound-checkin";
@@ -34,8 +35,9 @@ export function applySchedulerSynchronizationArguments(
 export async function runReminderEntry(arguments_: string[]): Promise<number> {
   try {
     const runDue = arguments_.length === 1 && arguments_[0] === "--run-due";
+    const queryNextWake = arguments_.length === 1 && arguments_[0] === "--next-wake";
     const schedulerSynchronization = arguments_.length === 4 && arguments_[2] === "--scheduler-synchronized-time";
-    if (!schedulerSynchronization && !runDue) parseReminderArguments(arguments_);
+    if (!schedulerSynchronization && !runDue && !queryNextWake) parseReminderArguments(arguments_);
     const paths = resolveAppPaths();
     const database = openDatabase(paths);
     try {
@@ -43,6 +45,12 @@ export async function runReminderEntry(arguments_: string[]): Promise<number> {
       if (schedulerSynchronization) {
         applySchedulerSynchronizationArguments(arguments_, repository, new Date());
         console.log("Scheduler synchronization recorded");
+        return 0;
+      }
+      if (queryNextWake) {
+        const calendar = new HolidayRepository(database);
+        const genericRepository = new GenericReminderRepository(database, calendar);
+        console.log(JSON.stringify({ nextRun: nextReminderWake(new Date(), genericRepository, calendar)?.toISOString() ?? null }));
         return 0;
       }
       const settingsRepository = new SettingsRepository(database);
