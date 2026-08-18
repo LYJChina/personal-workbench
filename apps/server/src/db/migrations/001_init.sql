@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS ai_polish_records (
 CREATE INDEX IF NOT EXISTS ai_polish_records_kind_created_idx
   ON ai_polish_records(kind, created_at DESC, id DESC);
 
+CREATE TABLE IF NOT EXISTS ai_polish_prompts (
+  kind TEXT PRIMARY KEY CHECK (kind IN ('daily_report', 'leadership', 'translation', 'general', 'custom')),
+  system_prompt TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS dashboard_layouts (
   module_id TEXT PRIMARY KEY,
   x INTEGER NOT NULL,

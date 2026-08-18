@@ -1,6 +1,8 @@
 import type {
   ConnectionTestResult,
   AiPolishInput,
+  AiPolishKind,
+  AiPolishPrompt,
   AiPolishRecord,
   AiSystemPromptInput,
   AiSystemPromptResult,
@@ -96,6 +98,12 @@ export const api = {
     body: JSON.stringify(input)
   }),
   getAiPolishHistory: () => requestJson<AiPolishRecord[]>("/ai-polish"),
+  getAiPolishPrompts: () => requestJson<AiPolishPrompt[]>("/ai-polish/prompts"),
+  saveAiPolishPrompt: (kind: AiPolishKind, systemPrompt: string) => requestJson<AiPolishPrompt>(`/ai-polish/prompts/${kind}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ systemPrompt })
+  }),
   updateAiPolish: (id: number, content: string) => requestJson<AiPolishRecord>(`/ai-polish/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

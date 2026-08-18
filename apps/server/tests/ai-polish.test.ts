@@ -93,6 +93,29 @@ describe("AI polish API", () => {
     await request(app).get("/api/ai-polish").expect(200).expect([]);
   });
 
+  it("persists one editable system prompt per polish scenario", async () => {
+    const app = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+
+    await request(app).get("/api/ai-polish/prompts").expect(200).expect([]);
+    await request(app)
+      .put("/api/ai-polish/prompts/translation")
+      .send({ systemPrompt: "保存后的翻译提示词" })
+      .expect(200)
+      .expect((response) => expect(response.body).toMatchObject({ kind: "translation", systemPrompt: "保存后的翻译提示词" }));
+
+    const reopened = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    await request(reopened).get("/api/ai-polish/prompts").expect(200).expect((response) => {
+      expect(response.body).toHaveLength(1);
+      expect(response.body[0]).toMatchObject({ kind: "translation", systemPrompt: "保存后的翻译提示词" });
+    });
+  });
+
+  it("rejects invalid prompt scenario names and empty saved prompts", async () => {
+    const app = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    await request(app).put("/api/ai-polish/prompts/unknown").send({ systemPrompt: "提示词" }).expect(400);
+    await request(app).put("/api/ai-polish/prompts/general").send({ systemPrompt: "" }).expect(400);
+  });
+
   it("upgrades an early AI history table and imports existing daily reports exactly once", () => {
     const databasePath = join(dataDir, "workbench.sqlite");
     const legacy = new Database(databasePath);

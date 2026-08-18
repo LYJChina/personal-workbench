@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { AiPolishRecordSchema, type AiPolishInput, type AiPolishRecord } from "@workbench/contracts";
+import { AiPolishPromptSchema, AiPolishRecordSchema, type AiPolishInput, type AiPolishKind, type AiPolishPrompt, type AiPolishRecord } from "@workbench/contracts";
 
 interface AiPolishRow {
   id: number;
@@ -10,6 +10,12 @@ interface AiPolishRow {
   content: string;
   model: string;
   created_at: string;
+  updated_at: string;
+}
+
+interface AiPolishPromptRow {
+  kind: string;
+  system_prompt: string;
   updated_at: string;
 }
 
@@ -56,5 +62,20 @@ export class AiPolishRepository {
     const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
     this.database.prepare("UPDATE ai_polish_records SET content = ?, updated_at = ? WHERE id = ?").run(content, updatedAt, id);
     return this.get(id);
+  }
+
+  public listPrompts(): AiPolishPrompt[] {
+    const rows = this.database.prepare("SELECT kind, system_prompt, updated_at FROM ai_polish_prompts ORDER BY kind").all() as AiPolishPromptRow[];
+    return rows.map((row) => AiPolishPromptSchema.parse({ kind: row.kind, systemPrompt: row.system_prompt, updatedAt: row.updated_at }));
+  }
+
+  public savePrompt(kind: AiPolishKind, systemPrompt: string): AiPolishPrompt {
+    const updatedAt = new Date().toISOString();
+    this.database.prepare(`INSERT INTO ai_polish_prompts (kind, system_prompt, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(kind) DO UPDATE SET system_prompt = excluded.system_prompt, updated_at = excluded.updated_at`
+    ).run(kind, systemPrompt, updatedAt);
+    const row = this.database.prepare("SELECT kind, system_prompt, updated_at FROM ai_polish_prompts WHERE kind = ?").get(kind) as AiPolishPromptRow;
+    return AiPolishPromptSchema.parse({ kind: row.kind, systemPrompt: row.system_prompt, updatedAt: row.updated_at });
   }
 }

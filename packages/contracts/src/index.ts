@@ -144,6 +144,14 @@ export const AiPolishUpdateSchema = z.object({
   content: z.string().trim().min(1).max(50_000)
 });
 
+export const AiPolishPromptSchema = z.object({
+  kind: AiPolishKindSchema,
+  systemPrompt: z.string().trim().min(1).max(10_000),
+  updatedAt: z.string()
+});
+
+export const AiPolishPromptUpdateSchema = AiPolishPromptSchema.pick({ systemPrompt: true });
+
 export const AiSystemPromptInputSchema = z.object({
   goal: z.string().trim().min(5).max(5_000)
 });
@@ -213,6 +221,8 @@ export type AiPolishKind = z.infer<typeof AiPolishKindSchema>;
 export type AiPolishInput = z.infer<typeof AiPolishInputSchema>;
 export type AiPolishRecord = z.infer<typeof AiPolishRecordSchema>;
 export type AiPolishUpdate = z.infer<typeof AiPolishUpdateSchema>;
+export type AiPolishPrompt = z.infer<typeof AiPolishPromptSchema>;
+export type AiPolishPromptUpdate = z.infer<typeof AiPolishPromptUpdateSchema>;
 export type AiSystemPromptInput = z.infer<typeof AiSystemPromptInputSchema>;
 export type AiSystemPromptResult = z.infer<typeof AiSystemPromptResultSchema>;
 export type ReminderId = z.infer<typeof ReminderIdSchema>;

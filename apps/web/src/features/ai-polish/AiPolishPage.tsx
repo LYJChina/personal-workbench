@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { AiPolishInput, AiPolishKind, AiPolishRecord, AiSystemPromptInput, AiSystemPromptResult } from "@workbench/contracts";
+import type { AiPolishInput, AiPolishKind, AiPolishPrompt, AiPolishRecord, AiSystemPromptInput, AiSystemPromptResult } from "@workbench/contracts";
 import { Icon } from "../../app/Icon";
 import { api as defaultApi } from "../../lib/api";
 import { AiPolishHistory } from "./AiPolishHistory";
@@ -10,6 +10,8 @@ export interface AiPolishApi {
   generateAiPolish(input: AiPolishInput): Promise<AiPolishRecord>;
   generateAiSystemPrompt(input: AiSystemPromptInput): Promise<AiSystemPromptResult>;
   getAiPolishHistory(): Promise<AiPolishRecord[]>;
+  getAiPolishPrompts(): Promise<AiPolishPrompt[]>;
+  saveAiPolishPrompt(kind: AiPolishKind, systemPrompt: string): Promise<AiPolishPrompt>;
   updateAiPolish(id: number, content: string): Promise<AiPolishRecord>;
 }
 
@@ -36,24 +38,51 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
   const [generatedPrompt, setGeneratedPrompt] = useState("");
   const [promptGenerating, setPromptGenerating] = useState(false);
   const [promptFeedback, setPromptFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [savedPrompts, setSavedPrompts] = useState<Partial<Record<AiPolishKind, string>>>({});
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [promptSaveFeedback, setPromptSaveFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   const refreshHistory = useCallback(async () => setRecords(await polishApi.getAiPolishHistory()), [polishApi]);
 
   useEffect(() => { void refreshHistory().catch(() => setError("历史记录加载失败，请稍后重试")); }, [refreshHistory]);
+  useEffect(() => {
+    void polishApi.getAiPolishPrompts().then((prompts) => {
+      const loaded = Object.fromEntries(prompts.map((prompt) => [prompt.kind, prompt.systemPrompt])) as Partial<Record<AiPolishKind, string>>;
+      setSavedPrompts(loaded);
+      setSystemPrompt(loaded[selectedKind] ?? presetFor(selectedKind).systemPrompt);
+    }).catch(() => setPromptSaveFeedback({ kind: "error", message: "已保存的提示词加载失败" }));
+  }, [polishApi]);
 
   function selectKind(kind: AiPolishKind) {
     const next = presetFor(kind);
     setSearchParams({ mode: kind });
     setPrimaryText("");
     setSecondaryText(next.defaultSecondary);
-    setSystemPrompt(next.systemPrompt);
+    setSystemPrompt(savedPrompts[kind] ?? next.systemPrompt);
     setResult(null);
     setError(null);
     setCopyFeedback(null);
     setPromptGoal("");
     setGeneratedPrompt("");
     setPromptFeedback(null);
+    setPromptSaveFeedback(null);
     setHistoryKind(kind);
+  }
+
+  async function saveSystemPrompt() {
+    if (promptSaving || !systemPrompt.trim()) return;
+    setPromptSaving(true);
+    setPromptSaveFeedback(null);
+    try {
+      const saved = await polishApi.saveAiPolishPrompt(selectedKind, systemPrompt);
+      setSavedPrompts((current) => ({ ...current, [saved.kind]: saved.systemPrompt }));
+      setSystemPrompt(saved.systemPrompt);
+      setPromptSaveFeedback({ kind: "success", message: "提示词已保存，重启应用后仍会保留" });
+    } catch (reason) {
+      setPromptSaveFeedback({ kind: "error", message: reason instanceof Error ? reason.message : "提示词保存失败，请稍后重试" });
+    } finally {
+      setPromptSaving(false);
+    }
   }
 
   function selectPromptBuilder() {
@@ -154,8 +183,8 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
         <form className="daily-report-input" onSubmit={generate}>
           <div className="card-heading"><div className="card-icon"><Icon name={preset.icon} /></div><div><span className="step-label">当前场景</span><h3>{preset.title}</h3></div></div>
           <label><span>{preset.primaryLabel}<small>{preset.primaryHint}</small></span><textarea aria-label={preset.primaryLabel} placeholder={preset.primaryPlaceholder} value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} rows={4} /></label>
-          <label><span>{preset.secondaryLabel}<small>{preset.secondaryHint}</small></span>{selectedKind === "translation" ? <select aria-label="翻译方向" value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)}><option value="中文 → 英文">中文 → 英文</option><option value="英文 → 中文">英文 → 中文</option></select> : <textarea aria-label={preset.secondaryLabel} placeholder={preset.secondaryPlaceholder} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={3} />}</label>
-          <details className="prompt-editor" open><summary>查看和修改提示词</summary><label>系统提示词<textarea aria-label="系统提示词" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={4} /></label><button className="button-ghost compact" type="button" onClick={() => setSystemPrompt(preset.systemPrompt)}>恢复此场景默认提示词</button></details>
+          {selectedKind === "translation" ? <fieldset className="translation-direction"><legend><span>{preset.secondaryLabel}</span><small>{preset.secondaryHint}</small></legend><div className="translation-direction-options">{["中文 → 英文", "英文 → 中文"].map((direction) => <label className="translation-direction-card" key={direction}><input type="radio" name="translation-direction" value={direction} checked={secondaryText === direction} onChange={(event) => setSecondaryText(event.target.value)} /><span>{direction}</span></label>)}</div></fieldset> : <label><span>{preset.secondaryLabel}<small>{preset.secondaryHint}</small></span><textarea aria-label={preset.secondaryLabel} placeholder={preset.secondaryPlaceholder} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={3} /></label>}
+          <details className="prompt-editor" open><summary>查看和修改提示词</summary><label>系统提示词<textarea aria-label="系统提示词" value={systemPrompt} onChange={(event) => { setSystemPrompt(event.target.value); setPromptSaveFeedback(null); }} rows={4} /></label><div className="prompt-editor-actions"><button className="button-ghost compact" type="button" onClick={() => { setSystemPrompt(preset.systemPrompt); setPromptSaveFeedback(null); }}>恢复默认</button><button className="button-secondary compact" type="button" disabled={promptSaving || !systemPrompt.trim()} onClick={() => void saveSystemPrompt()}>{promptSaving ? <><span className="spinner" />保存中…</> : <><Icon name="check" size={16} />保存提示词</>}</button></div>{promptSaveFeedback && <p className={`prompt-feedback ${promptSaveFeedback.kind}`} role={promptSaveFeedback.kind === "error" ? "alert" : "status"}>{promptSaveFeedback.message}</p>}</details>
           <button className="button-primary generate-button" type="submit" disabled={submitting || !systemPrompt.trim() || (!primaryText.trim() && !secondaryText.trim())}>{submitting ? <><span className="spinner" />生成中…</> : <><Icon name="sparkles" size={18} />{preset.actionLabel}</>}</button>
           {error && <div role="alert">{error} {error.includes("配置") && <Link to="/settings">前往设置</Link>}</div>}
         </form>

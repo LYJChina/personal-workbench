@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import type { AiPolishRecord } from "@workbench/contracts";
+import type { AiPolishPrompt, AiPolishRecord } from "@workbench/contracts";
 import { AiPolishPage, type AiPolishApi } from "./AiPolishPage";
 
 const generated: AiPolishRecord = {
@@ -16,6 +16,8 @@ function createApi(): AiPolishApi {
     generateAiPolish: vi.fn().mockResolvedValue(generated),
     generateAiSystemPrompt: vi.fn().mockResolvedValue({ prompt: "自动生成的系统提示词", model: "deepseek-chat" }),
     getAiPolishHistory: vi.fn().mockResolvedValue([]),
+    getAiPolishPrompts: vi.fn().mockResolvedValue([]),
+    saveAiPolishPrompt: vi.fn().mockImplementation(async (kind, systemPrompt) => ({ kind, systemPrompt, updatedAt: "2026-08-18T09:00:00.000Z" } satisfies AiPolishPrompt)),
     updateAiPolish: vi.fn().mockImplementation(async (id, content) => ({ ...generated, id, content }))
   };
 }
@@ -46,9 +48,10 @@ describe("AI polish workspace", () => {
     expect(screen.getByLabelText("沟通素材")).toBeVisible();
     expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("职场沟通");
     await user.click(screen.getAllByRole("link", { name: /^翻译/ })[0]);
-    expect(screen.getByLabelText("翻译方向")).toHaveValue("中文 → 英文");
-    await user.selectOptions(screen.getByLabelText("翻译方向"), "英文 → 中文");
-    expect(screen.getByLabelText("翻译方向")).toHaveValue("英文 → 中文");
+    expect(screen.queryByRole("combobox", { name: "翻译方向" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "中文 → 英文" })).toBeChecked();
+    await user.click(screen.getByText("英文 → 中文"));
+    expect(screen.getByRole("radio", { name: "英文 → 中文" })).toBeChecked();
     await user.click(screen.getAllByRole("link", { name: /普通润色/ })[0]);
     expect(screen.getByLabelText("待润色原文")).toBeVisible();
     await user.click(screen.getAllByRole("link", { name: /自定义/ })[0]);
@@ -63,6 +66,25 @@ describe("AI polish workspace", () => {
     await user.click(screen.getByRole("button", { name: "应用到自定义" }));
     expect(screen.getByLabelText("系统提示词")).toHaveValue("自动生成的系统提示词");
     expect(screen.getByRole("link", { name: /自定义/ })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("loads and saves a customized prompt for each scenario", async () => {
+    const user = userEvent.setup();
+    const polishApi = createApi();
+    polishApi.getAiPolishPrompts = vi.fn().mockResolvedValue([
+      { kind: "daily_report", systemPrompt: "我保存的日报提示词", updatedAt: "2026-08-18T09:00:00.000Z" }
+    ]);
+    render(<MemoryRouter><AiPolishPage api={polishApi} /></MemoryRouter>);
+
+    expect(await screen.findByLabelText("系统提示词")).toHaveValue("我保存的日报提示词");
+    await user.clear(screen.getByLabelText("系统提示词"));
+    await user.type(screen.getByLabelText("系统提示词"), "新的日报提示词");
+    await user.click(screen.getByRole("button", { name: "保存提示词" }));
+
+    await waitFor(() => expect(polishApi.saveAiPolishPrompt).toHaveBeenCalledWith("daily_report", "新的日报提示词"));
+    expect(screen.getByRole("status")).toHaveTextContent("提示词已保存");
+    await user.click(screen.getAllByRole("link", { name: /给领导的话/ })[0]);
+    expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("职场沟通");
   });
 
   it("generates with the visible prompt and filters history by card", async () => {

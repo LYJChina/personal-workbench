@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { AiPolishInputSchema, AiPolishUpdateSchema, AiSystemPromptInputSchema } from "@workbench/contracts";
+import { AiPolishInputSchema, AiPolishKindSchema, AiPolishPromptUpdateSchema, AiPolishUpdateSchema, AiSystemPromptInputSchema } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import type { SecretStore } from "../../platform/dpapi.js";
@@ -82,6 +82,15 @@ export function createAiPolishRouter(paths: AppPaths, dependencies: {
   }));
 
   router.get("/ai-polish", (_request, response) => response.json(recordsFor(response).list()));
+
+  router.get("/ai-polish/prompts", (_request, response) => response.json(recordsFor(response).listPrompts()));
+
+  router.put("/ai-polish/prompts/:kind", (request, response) => {
+    const kind = AiPolishKindSchema.safeParse(request.params.kind);
+    const prompt = AiPolishPromptUpdateSchema.safeParse(request.body);
+    if (!kind.success || !prompt.success) return errorResponse(response, 400, "AI polish prompt validation failed", "VALIDATION_ERROR");
+    response.json(recordsFor(response).savePrompt(kind.data, prompt.data.systemPrompt));
+  });
 
   router.put("/ai-polish/:id", (request, response) => {
     const id = parseId(request.params.id);
