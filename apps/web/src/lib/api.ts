@@ -1,5 +1,7 @@
 import type {
   ConnectionTestResult,
+  AiPolishInput,
+  AiPolishRecord,
   DashboardLayout,
   DailyReport,
   DailyReportInput,
@@ -77,6 +79,17 @@ export const api = {
   getDailyReports: () => requestJson<DailyReport[]>("/daily-reports"),
   getDailyReport: (id: number) => requestJson<DailyReport>(`/daily-reports/${id}`),
   updateDailyReport: (id: number, content: string) => requestJson<DailyReport>(`/daily-reports/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content })
+  }),
+  generateAiPolish: (input: AiPolishInput) => requestJson<AiPolishRecord>("/ai-polish/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  }),
+  getAiPolishHistory: () => requestJson<AiPolishRecord[]>("/ai-polish"),
+  updateAiPolish: (id: number, content: string) => requestJson<AiPolishRecord>(`/ai-polish/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content })

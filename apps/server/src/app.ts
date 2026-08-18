@@ -9,6 +9,8 @@ import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectio
 import { WindowsDpapiSecretStore, type SecretStore } from "./platform/dpapi.js";
 import { createReminderRouter } from "./modules/reminders/reminder.routes.js";
 import type { NotificationChannel } from "./modules/reminders/notification-channel.js";
+import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";
+import { AiPolishClient, type AiPolishGenerator } from "./modules/ai-polish/ai-polish.client.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -18,6 +20,7 @@ export interface CreateAppOptions {
   mailConnectionTester?: MailConnectionTester;
   connectionTimeoutMs?: number;
   deepSeekClient?: DailyReportGenerator;
+  aiPolishClient?: AiPolishGenerator;
   reminderChannel?: NotificationChannel;
   now?: () => Date;
   webDistDir?: string;
@@ -29,6 +32,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const paths = resolveAppPaths(options);
   const secretStore = options.secretStore ?? new WindowsDpapiSecretStore(paths.secretsDir);
   const deepSeekClient = options.deepSeekClient ?? new DeepSeekClient();
+  const aiPolishClient = options.aiPolishClient ?? new AiPolishClient();
 
   app.use(express.json());
 
@@ -44,6 +48,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api", createDailyReportRouter(paths, {
     secretStore,
     deepSeekClient,
+    allowLoopbackHttp: options.allowLoopbackHttp
+  }));
+  app.use("/api", createAiPolishRouter(paths, {
+    secretStore,
+    generator: aiPolishClient,
     allowLoopbackHttp: options.allowLoopbackHttp
   }));
   app.use("/api", createReminderRouter(paths, {

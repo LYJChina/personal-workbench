@@ -29,6 +29,21 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS ai_polish_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL CHECK (kind IN ('daily_report', 'leadership', 'translation', 'general')),
+  primary_text TEXT NOT NULL,
+  secondary_text TEXT NOT NULL,
+  system_prompt TEXT NOT NULL,
+  content TEXT NOT NULL,
+  model TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS ai_polish_records_kind_created_idx
+  ON ai_polish_records(kind, created_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS dashboard_layouts (
   module_id TEXT PRIMARY KEY,
   x INTEGER NOT NULL,

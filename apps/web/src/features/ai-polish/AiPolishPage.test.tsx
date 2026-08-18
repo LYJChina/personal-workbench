@@ -1,0 +1,58 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+import type { AiPolishRecord } from "@workbench/contracts";
+import { AiPolishPage, type AiPolishApi } from "./AiPolishPage";
+
+const generated: AiPolishRecord = {
+  id: 1, kind: "leadership", primaryText: "项目完成", secondaryText: "请确认方案", systemPrompt: "领导沟通提示词",
+  content: "领导您好，项目已完成，请确认下一步方案。", model: "deepseek-chat",
+  createdAt: "2026-08-18T09:00:00.000Z", updatedAt: "2026-08-18T09:00:00.000Z"
+};
+
+function createApi(): AiPolishApi {
+  return {
+    generateAiPolish: vi.fn().mockResolvedValue(generated),
+    getAiPolishHistory: vi.fn().mockResolvedValue([]),
+    updateAiPolish: vi.fn().mockImplementation(async (id, content) => ({ ...generated, id, content }))
+  };
+}
+
+describe("AI polish workspace", () => {
+  it("switches among four deep-linkable scenarios and exposes editable preset prompts", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><AiPolishPage api={createApi()} /></MemoryRouter>);
+
+    expect(screen.getAllByRole("link", { name: /日报填写/ })[0]).toHaveAttribute("aria-current", "page");
+    expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("工作日报");
+    await user.click(screen.getAllByRole("link", { name: /给领导的话/ })[0]);
+    expect(screen.getByLabelText("沟通素材")).toBeVisible();
+    expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("职场沟通");
+    await user.click(screen.getAllByRole("link", { name: /^翻译/ })[0]);
+    expect(screen.getByLabelText("目标语言及要求")).toHaveValue("英语，正式自然的商务语气");
+    await user.click(screen.getAllByRole("link", { name: /普通润色/ })[0]);
+    expect(screen.getByLabelText("待润色原文")).toBeVisible();
+  });
+
+  it("generates with the visible prompt and filters history by card", async () => {
+    const polishApi = createApi();
+    polishApi.getAiPolishHistory = vi.fn().mockResolvedValue([generated, { ...generated, id: 2, kind: "daily_report", content: "日报内容" }]);
+    render(<MemoryRouter initialEntries={["/ai-office/polish?mode=leadership"]}><AiPolishPage api={polishApi} /></MemoryRouter>);
+    await screen.findByText(/领导您好/);
+
+    fireEvent.change(screen.getByLabelText("沟通素材"), { target: { value: "项目完成" } });
+    fireEvent.change(screen.getByLabelText("希望领导关注"), { target: { value: "请确认方案" } });
+    fireEvent.change(screen.getByLabelText("系统提示词"), { target: { value: "领导沟通提示词" } });
+    fireEvent.click(screen.getByRole("button", { name: "整理沟通文案" }));
+
+    await waitFor(() => expect(polishApi.generateAiPolish).toHaveBeenCalledWith({ kind: "leadership", primaryText: "项目完成", secondaryText: "请确认方案", systemPrompt: "领导沟通提示词" }));
+    expect(await screen.findByRole("region", { name: "给领导的话结果" })).toHaveTextContent("领导您好");
+    const articles = screen.getAllByRole("article");
+    expect(articles).toHaveLength(1);
+    expect(within(articles[0]).getByText(/领导您好/)).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "历史日报" }));
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByText(/日报内容/)).toBeVisible();
+  });
+});

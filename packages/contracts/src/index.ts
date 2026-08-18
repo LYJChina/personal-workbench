@@ -118,6 +118,32 @@ export const DailyReportUpdateSchema = z.object({
   content: z.string().trim().min(1).max(50_000)
 });
 
+export const AiPolishKindSchema = z.enum(["daily_report", "leadership", "translation", "general"]);
+export const AiPolishInputSchema = z.object({
+  kind: AiPolishKindSchema,
+  primaryText: z.string().trim().max(20_000),
+  secondaryText: z.string().trim().max(20_000),
+  systemPrompt: z.string().trim().min(1).max(10_000)
+}).refine((input) => Boolean(input.primaryText || input.secondaryText), {
+  message: "At least one source field is required"
+});
+
+export const AiPolishRecordSchema = z.object({
+  id: z.number().int().positive(),
+  kind: AiPolishKindSchema,
+  primaryText: z.string(),
+  secondaryText: z.string(),
+  systemPrompt: z.string(),
+  content: z.string(),
+  model: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const AiPolishUpdateSchema = z.object({
+  content: z.string().trim().min(1).max(50_000)
+});
+
 export const ReminderIdSchema = z.literal("outbound-checkin");
 export const ReminderUpdateSchema = z.object({
   enabled: z.boolean(),
@@ -174,6 +200,10 @@ export type ConnectionTestResult = z.infer<typeof ConnectionTestResultSchema>;
 export type DailyReportInput = z.infer<typeof DailyReportInputSchema>;
 export type DailyReport = z.infer<typeof DailyReportSchema>;
 export type DailyReportUpdate = z.infer<typeof DailyReportUpdateSchema>;
+export type AiPolishKind = z.infer<typeof AiPolishKindSchema>;
+export type AiPolishInput = z.infer<typeof AiPolishInputSchema>;
+export type AiPolishRecord = z.infer<typeof AiPolishRecordSchema>;
+export type AiPolishUpdate = z.infer<typeof AiPolishUpdateSchema>;
 export type ReminderId = z.infer<typeof ReminderIdSchema>;
 export type ReminderUpdate = z.infer<typeof ReminderUpdateSchema>;
 export type ReminderFailureCategory = z.infer<typeof ReminderFailureCategorySchema>;

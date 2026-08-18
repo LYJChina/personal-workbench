@@ -11,6 +11,7 @@ import { Sidebar } from "./Sidebar";
 import { ThemeProvider } from "./ThemeProvider";
 import { Icon } from "./Icon";
 import { AppearanceProvider } from "./AppearanceProvider";
+import { AiPolishPage } from "../features/ai-polish/AiPolishPage";
 
 function Shell() {
   return (
@@ -53,6 +54,7 @@ export function App() {
           <Route element={<Shell />}>
             <Route index element={<HomePage />} />
             <Route path="ai-office" element={<AiOfficePage />} />
+            <Route path="ai-office/polish" element={<AiPolishPage />} />
             <Route path="ai-office/daily-report" element={<DailyReportPage />} />
             <Route path="reminders" element={<ReminderPage />} />
             <Route path="settings" element={<SettingsPage />} />

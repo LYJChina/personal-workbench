@@ -67,11 +67,11 @@ describe("AI Office daily report flow", () => {
 
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
     expect(screen.getByRole("heading", { name: "AI 办公" })).toBeVisible();
-    const card = screen.getByRole("link", { name: /日报填写/ });
+    const card = screen.getByRole("link", { name: /AI 润色/ });
     expect(card).toHaveClass("ai-tool-card");
     await user.click(card);
 
-    expect(screen.getByRole("heading", { name: "日报填写" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "AI 润色" })).toBeVisible();
     expect(screen.getByLabelText("今日完成")).toBeVisible();
     expect(screen.getByLabelText("问题与风险")).toBeVisible();
   });

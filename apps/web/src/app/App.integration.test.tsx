@@ -36,6 +36,7 @@ describe("complete application navigation", () => {
       if (path === "/api/preferences/theme" && method === "PUT") return json(JSON.parse(String(init?.body)));
       if (path === "/api/profile") return json({ name: "LYJ", birthday: "", employeeNumber: "001", customFields: [], photoFilename: null });
       if (path === "/api/daily-reports") return json([]);
+      if (path === "/api/ai-polish") return json([]);
       if (path === "/api/settings") return json({
         deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKeyConfigured: false },
         mail: { smtpHost: "", smtpPort: 587, transportMode: "starttls", smtpUsername: "", fromAddress: "", smtpPasswordConfigured: false }
@@ -64,8 +65,8 @@ describe("complete application navigation", () => {
 
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
     expect(await screen.findByRole("heading", { name: "AI 办公" })).toBeVisible();
-    await user.click(screen.getByRole("link", { name: "日报填写" }));
-    expect(await screen.findByRole("heading", { name: "日报填写" })).toBeVisible();
+    await user.click(screen.getByRole("link", { name: "AI 润色" }));
+    expect(await screen.findByRole("heading", { name: "AI 润色" })).toBeVisible();
     expect(screen.getByLabelText("今日完成")).toBeVisible();
 
     await user.click(screen.getByRole("link", { name: "设置" }));
