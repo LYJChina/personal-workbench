@@ -48,6 +48,7 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
   const [attempts, setAttempts] = useState<GenericReminderAttempt[]>([]);
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [filter, setFilter] = useState<"all" | ReminderLifecycle>("all");
+  const [view, setView] = useState<"pending" | "history">("pending");
   const [editing, setEditing] = useState<GenericReminder | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -124,9 +125,21 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
     <header className="page-heading reminder-center-heading"><div><span className="eyebrow">AUTOMATION</span><h2>提醒事项</h2><p>管理一次性、有限次数和常驻邮件提醒。</p></div><div className="heading-actions"><button type="button" className="button-secondary" disabled={syncing} onClick={() => void synchronize()}><Icon name="clock" size={17} />{syncing ? "同步中…" : "同步系统计划"}</button><button type="button" className="button-primary" onClick={() => setEditing(null)}>新建提醒</button></div></header>
     <div className={`scheduler-banner ${scheduler?.synchronized ? "success" : "warning"}`}><div><strong>{scheduler?.synchronized ? "系统计划已同步" : "系统计划尚未同步"}</strong><p>{scheduler?.message ?? "无法读取系统计划状态"}</p>{scheduler?.nextRun && <p>下次执行：{schedulerTime(scheduler.nextRun)}</p>}</div><span className="status-chip neutral">{scheduler?.taskName ?? "LYJWorkBench-ReminderRunner"}</span></div>
     {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`feedback-banner ${feedback.kind}`}>{feedback.text}</p>}
-    <div className="reminder-center-grid">
-      <ReminderList reminders={reminders} filter={filter} onFilter={setFilter} onEdit={setEditing} onDelete={(item) => void remove(item)} onTest={(item) => void test(item)} />
-      <ReminderHistory attempts={attempts} />
+    <div className="reminder-workspace">
+      <div className="reminder-workspace-topbar">
+        <div className="reminder-view-tabs" role="tablist" aria-label="提醒视图">
+          <button type="button" role="tab" aria-selected={view === "pending"} className={view === "pending" ? "active" : ""} onClick={() => setView("pending")}>
+            <span>等待执行</span><strong>{reminders.length}</strong>
+          </button>
+          <button type="button" role="tab" aria-selected={view === "history"} className={view === "history" ? "active" : ""} onClick={() => setView("history")}>
+            <span>已执行</span><strong>{attempts.length}</strong>
+          </button>
+        </div>
+        <p>{view === "pending" ? "按下一次执行时间查看和管理提醒" : "查看每一次邮件执行结果"}</p>
+      </div>
+      {view === "pending"
+        ? <ReminderList reminders={reminders} filter={filter} onFilter={setFilter} onEdit={setEditing} onDelete={(item) => void remove(item)} onTest={(item) => void test(item)} />
+        : <ReminderHistory attempts={attempts} />}
     </div>
     {editing !== undefined && <ReminderEditor reminder={editing} onSave={save} onClose={() => setEditing(undefined)} />}
   </section>;

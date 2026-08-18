@@ -41,14 +41,21 @@ function createApi(overrides: Partial<ReminderCenterApi> = {}): ReminderCenterAp
 }
 
 describe("generic reminder center", () => {
-  it("shows pending reminders, execution history and one-click scheduler sync", async () => {
+  it("switches between pending reminders and execution history in one workspace", async () => {
     const user = userEvent.setup();
     const api = createApi();
     render(<MemoryRouter><ReminderPage api={api} /></MemoryRouter>);
 
     expect(await screen.findByRole("heading", { name: "提醒事项" })).toBeVisible();
+    expect(screen.getByRole("tablist", { name: "提醒视图" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: /等待执行/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "等待执行" })).toHaveTextContent("外勤打卡");
+    expect(screen.queryByRole("region", { name: "已执行" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /已执行/ }));
+    expect(screen.getByRole("tab", { name: /已执行/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "已执行" })).toHaveTextContent("发送成功");
+
     await user.click(screen.getByRole("button", { name: "同步系统计划" }));
     expect(api.syncScheduler).toHaveBeenCalledTimes(1);
     expect((await screen.findAllByText("已同步")).length).toBeGreaterThan(0);
