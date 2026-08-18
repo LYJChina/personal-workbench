@@ -140,6 +140,25 @@ a.ai-tool-card:hover { border-color: var(--primary-color); box-shadow: var(--sha
 .history-kind-tabs button { min-height: 2.5rem; padding: .5rem .85rem; color: var(--muted-text-color); border-color: var(--border-color); }
 .history-kind-tabs button.active { color: var(--primary-soft-text); border-color: var(--primary-color); background: var(--primary-soft); }
 
+.ai-polish-page { max-width: 94rem; }
+.ai-polish-workspace { min-width: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(17rem, .95fr); gap: 1rem; align-items: start; }
+.ai-polish-page .daily-report-workspace { grid-template-columns: minmax(22rem, 1.15fr) minmax(17rem, .78fr); align-items: stretch; }
+.ai-polish-page .daily-report-input { gap: .62rem; padding: 1rem; }
+.ai-polish-page .daily-report-input textarea { min-height: 4.4rem; margin-top: .25rem; padding-block: .55rem; }
+.ai-polish-page .prompt-editor { padding: .62rem; }
+.ai-polish-page .prompt-editor[open] summary { margin-bottom: .45rem; }
+.ai-polish-page .prompt-editor textarea { min-height: 5.25rem; }
+.ai-polish-page .daily-report-result { min-width: 0; padding: 1rem; }
+.ai-polish-page .daily-report-result pre { min-height: 11rem; }
+.ai-polish-page .result-empty { min-height: 12rem; }
+.ai-polish-page .daily-report-history { position: sticky; top: 1rem; min-width: 0; max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--surface-background); box-shadow: var(--shadow-sm); scrollbar-width: thin; }
+.ai-polish-page .daily-report-history .section-heading { align-items: flex-start; margin: 0 0 .75rem; }
+.ai-polish-page .daily-report-history .section-heading p { margin-top: .2rem; font-size: .72rem; }
+.ai-polish-page .history-kind-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; margin-bottom: .75rem; }
+.ai-polish-page .history-kind-tabs button { min-width: 0; padding: .45rem .55rem; font-size: .7rem; line-height: 1.35; }
+.ai-polish-page .daily-report-history-list { grid-template-columns: 1fr; gap: .65rem; }
+.ai-polish-page .daily-report-history article { padding: .8rem; }
+
 .back-link { width: max-content; display: inline-flex; align-items: center; gap: .35rem; margin-bottom: 1.15rem; color: var(--muted-text-color); text-decoration: none; font-size: .8rem; font-weight: 700; }
 .back-link:hover { color: var(--primary-color); }
 .daily-report-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: stretch; }
@@ -232,6 +251,9 @@ input[aria-invalid="true"] { border-color: var(--danger-color); }
 
 @media (max-width: 64rem) {
   :root { --sidebar-width: 13.5rem; }
+  .ai-polish-workspace { grid-template-columns: 1fr; }
+  .ai-polish-page .daily-report-history { position: static; max-height: none; }
+  .ai-polish-page .daily-report-history-list { grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
   .reminder-layout { grid-template-columns: 1fr; }
   .schedule-card { grid-template-columns: auto 1fr; align-items: center; }
   .schedule-card .eyebrow, .schedule-card p { grid-column: 2; }
@@ -252,7 +274,7 @@ input[aria-invalid="true"] { border-color: var(--danger-color); }
   .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 1.25rem; }
   .dashboard-toolbar .button-secondary, .dashboard-toolbar .button-primary { width: 100%; }
   .dashboard-grid { margin: 0; overflow: hidden; }
-  .daily-report-workspace, .form-grid, .form-grid.three, .skin-options, .appearance-controls, .polish-mode-grid { grid-template-columns: 1fr; }
+  .daily-report-workspace, .ai-polish-page .daily-report-workspace, .form-grid, .form-grid.three, .skin-options, .appearance-controls, .polish-mode-grid { grid-template-columns: 1fr; }
   .appearance-footer { align-items: stretch; flex-direction: column; }
   .ai-office-page { min-height: calc(100dvh - 9.8rem); }
   .ai-office-note { justify-self: stretch; max-width: none; }

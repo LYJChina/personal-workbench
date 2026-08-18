@@ -62,6 +62,7 @@
 [data-glass="true"] .dashboard-module, [data-glass="true"] .ai-tool-card, [data-glass="true"] .polish-mode-card,
 [data-glass="true"] .feature-hero, [data-glass="true"] .daily-report-input, [data-glass="true"] .daily-report-result,
 [data-glass="true"] .daily-report-history article, [data-glass="true"] .settings-page > section,
+[data-glass="true"] .ai-polish-page .daily-report-history,
 [data-glass="true"] .reminder-form, [data-glass="true"] .schedule-card, [data-glass="true"] .reminder-stats > div,
 [data-glass="true"] .ai-office-note {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
