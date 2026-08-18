@@ -231,6 +231,7 @@ export const GenericReminderInputSchema = GenericReminderFieldsSchema.superRefin
 });
 export const GenericReminderSchema = GenericReminderFieldsSchema.extend({
   id: z.string().min(1),
+  recipient: z.union([z.literal(""), z.string().trim().email().max(500)]),
   successfulOccurrences: z.number().int().nonnegative(),
   nextRun: z.string().nullable(),
   calendarBlocked: z.boolean()
