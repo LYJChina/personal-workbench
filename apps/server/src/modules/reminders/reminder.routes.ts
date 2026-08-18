@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { ReminderTestResultSchema, ReminderUpdateSchema, type ReminderTestResult } from "@workbench/contracts";
+import { GenericReminderInputSchema, ReminderTestResultSchema, ReminderUpdateSchema, type ReminderTestResult } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import type { SecretStore } from "../../platform/dpapi.js";
@@ -7,11 +7,15 @@ import { SettingsRepository } from "../settings/settings.repository.js";
 import { EmailNotificationChannel } from "./email-channel.js";
 import type { NotificationChannel } from "./notification-channel.js";
 import { ReminderRepository } from "./reminder.repository.js";
+import { GenericReminderRepository } from "./generic-reminder.repository.js";
+import { HolidayRepository } from "../calendar/holiday.repository.js";
+import { ReminderSchedulerService, type ReminderScheduler } from "./reminder-scheduler.js";
 
 export interface ReminderRouterDependencies {
   secretStore: SecretStore;
   channel?: NotificationChannel;
   now?: () => Date;
+  scheduler?: ReminderScheduler;
 }
 
 function errorResponse(response: Response, status: number, message: string, code: string): void {
@@ -25,6 +29,12 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
   router.use((_request, response, next) => {
     const database = openDatabase(paths);
     response.locals.reminderRepository = new ReminderRepository(database);
+    response.locals.holidayRepository = new HolidayRepository(database);
+    response.locals.genericReminderRepository = new GenericReminderRepository(
+      database,
+      response.locals.holidayRepository as HolidayRepository,
+      now()
+    );
     response.locals.reminderSettingsRepository = new SettingsRepository(database);
     response.once("finish", () => database.close());
     next();
@@ -32,6 +42,7 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
 
   const remindersFor = (response: Response): ReminderRepository => response.locals.reminderRepository as ReminderRepository;
   const settingsFor = (response: Response): SettingsRepository => response.locals.reminderSettingsRepository as SettingsRepository;
+  const genericFor = (response: Response): GenericReminderRepository => response.locals.genericReminderRepository as GenericReminderRepository;
   const handle = (handler: (request: Request, response: Response) => Promise<void>) =>
     (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);
   const channelFor = (response: Response): NotificationChannel => dependencies.channel ?? new EmailNotificationChannel({
@@ -63,6 +74,79 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
       ? { status: "success", message: "测试邮件已发送" }
       : { status: "failure", category: delivery.category, message: "测试邮件发送失败" };
     response.json(ReminderTestResultSchema.parse(result));
+  }));
+
+  router.get("/reminders", (_request, response) => {
+    response.json({ items: genericFor(response).list(now()) });
+  });
+  const scheduler = dependencies.scheduler ?? ReminderSchedulerService.fromCurrentModule();
+
+  router.get("/reminder-scheduler/status", handle(async (_request, response) => {
+    response.json(await scheduler.status());
+  }));
+
+  router.post("/reminder-scheduler/sync", handle(async (_request, response) => {
+    response.json(await scheduler.sync());
+  }));
+
+  router.post("/reminders", (request, response) => {
+    const parsed = GenericReminderInputSchema.safeParse(request.body);
+    if (!parsed.success) return errorResponse(response, 400, "Reminder validation failed", "VALIDATION_ERROR");
+    response.status(201).json(genericFor(response).create(parsed.data, now()));
+  });
+
+  router.get("/reminder-attempts", (_request, response) => {
+    response.json({ items: genericFor(response).listAttempts() });
+  });
+
+  router.get("/dashboard/upcoming-reminders", (_request, response) => {
+    response.json({ items: genericFor(response).list(now()).filter((item) => item.enabled && item.nextRun !== null) });
+  });
+
+  router.get("/reminders/:id", (request, response) => {
+    try {
+      response.json(genericFor(response).get(String(request.params.id), now()));
+    } catch {
+      errorResponse(response, 404, "Reminder not found", "NOT_FOUND");
+    }
+  });
+
+  router.put("/reminders/:id", (request, response) => {
+    const parsed = GenericReminderInputSchema.safeParse(request.body);
+    if (!parsed.success) return errorResponse(response, 400, "Reminder validation failed", "VALIDATION_ERROR");
+    try {
+      response.json(genericFor(response).update(String(request.params.id), parsed.data, now()));
+    } catch {
+      errorResponse(response, 404, "Reminder not found", "NOT_FOUND");
+    }
+  });
+
+  router.delete("/reminders/:id", (request, response) => {
+    try {
+      genericFor(response).delete(String(request.params.id));
+      response.status(204).end();
+    } catch {
+      errorResponse(response, 404, "Reminder not found", "NOT_FOUND");
+    }
+  });
+
+  router.post("/reminders/:id/test", handle(async (request, response) => {
+    let reminder;
+    try {
+      reminder = genericFor(response).get(String(request.params.id), now());
+    } catch {
+      errorResponse(response, 404, "Reminder not found", "NOT_FOUND");
+      return;
+    }
+    let delivery;
+    try {
+      delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body });
+    } catch {
+      delivery = { status: "failure" as const, category: "unknown" as const };
+    }
+    response.json(delivery.status === "success"
+      ? { status: "success", message: "测试邮件已发送" }
+      : { status: "failure", category: delivery.category, message: "测试邮件发送失败" });
   }));
 
   return router;

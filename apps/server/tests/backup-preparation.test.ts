@@ -29,9 +29,10 @@ describe("backup preparation", () => {
       function Get-ScheduledTask {
         param($TaskPath, $TaskName, $ErrorAction)
         Add-Content -LiteralPath $env:LYJ_CALLS -Value ("get|" + $TaskPath + "|" + $TaskName)
+        if ($TaskName -eq 'LYJWorkBench-OutboundCheckin') { return $null }
         $script:Queries += 1
-        if ($script:Queries -eq 1) { return [pscustomobject]@{ TaskPath = '\\'; TaskName = 'LYJWorkBench-OutboundCheckin'; State = 'Running' } }
-        return [pscustomobject]@{ TaskPath = '\\'; TaskName = 'LYJWorkBench-OutboundCheckin'; State = 'Ready' }
+        if ($script:Queries -eq 1) { return [pscustomobject]@{ TaskPath = '\\'; TaskName = $TaskName; State = 'Running' } }
+        return [pscustomobject]@{ TaskPath = '\\'; TaskName = $TaskName; State = 'Ready' }
       }
       function Disable-ScheduledTask { param($TaskPath, $TaskName) Add-Content -LiteralPath $env:LYJ_CALLS -Value ("disable|" + $TaskPath + "|" + $TaskName) }
       function Stop-ScheduledTask { param($TaskPath, $TaskName) Add-Content -LiteralPath $env:LYJ_CALLS -Value ("stop|" + $TaskPath + "|" + $TaskName) }
@@ -50,9 +51,10 @@ describe("backup preparation", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("Backup preparation complete");
     expect((await readFile(calls, "utf8")).trim().split(/\r?\n/)).toEqual([
-      "get|\\|LYJWorkBench-OutboundCheckin",
-      "disable|\\|LYJWorkBench-OutboundCheckin",
-      "stop|\\|LYJWorkBench-OutboundCheckin",
+      "get|\\|LYJWorkBench-ReminderRunner",
+      "disable|\\|LYJWorkBench-ReminderRunner",
+      "stop|\\|LYJWorkBench-ReminderRunner",
+      "get|\\|LYJWorkBench-ReminderRunner",
       "get|\\|LYJWorkBench-OutboundCheckin",
       "listener|127.0.0.1|3001|Listen"
     ]);
@@ -64,7 +66,7 @@ describe("backup preparation", () => {
     await writeFile(wrapper, `
       param([string]$Script)
       $ErrorActionPreference = 'Stop'
-      function Get-ScheduledTask { param($TaskPath, $TaskName, $ErrorAction) return [pscustomobject]@{ TaskPath = '\\Foreign\\'; TaskName = 'LYJWorkBench-OutboundCheckin'; State = 'Running' } }
+      function Get-ScheduledTask { param($TaskPath, $TaskName, $ErrorAction) return [pscustomobject]@{ TaskPath = '\\Foreign\\'; TaskName = $TaskName; State = 'Running' } }
       function Disable-ScheduledTask { Set-Content -LiteralPath $env:LYJ_ACTION -Value 'disabled' }
       function Stop-ScheduledTask { Set-Content -LiteralPath $env:LYJ_ACTION -Value 'stopped' }
       function Get-NetTCPConnection { return $null }

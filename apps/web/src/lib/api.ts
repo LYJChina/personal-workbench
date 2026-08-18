@@ -19,6 +19,11 @@ import type {
   Reminder,
   ReminderTestResult,
   ReminderUpdate,
+  GenericReminder,
+  GenericReminderInput,
+  GenericReminderAttempt,
+  SchedulerStatus,
+  HolidayDay,
   SettingsResponse,
   Theme
 } from "@workbench/contracts";
@@ -30,6 +35,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body?.error?.message ?? "请求失败，请稍后重试");
   }
   return response.json() as Promise<T>;
+}
+
+async function requestVoid(path: string, init?: RequestInit): Promise<void> {
+  const response = await fetch(`/api${path}`, init);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(body?.error?.message ?? "请求失败，请稍后重试");
+  }
 }
 
 export const api = {
@@ -115,5 +128,24 @@ export const api = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   }),
-  testReminder: () => requestJson<ReminderTestResult>("/reminders/outbound-checkin/test", { method: "POST" })
+  testReminder: () => requestJson<ReminderTestResult>("/reminders/outbound-checkin/test", { method: "POST" }),
+  listReminders: () => requestJson<{ items: GenericReminder[] }>("/reminders"),
+  createGenericReminder: (input: GenericReminderInput) => requestJson<GenericReminder>("/reminders", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
+  }),
+  updateGenericReminder: (id: string, input: GenericReminderInput) => requestJson<GenericReminder>(`/reminders/${encodeURIComponent(id)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
+  }),
+  deleteGenericReminder: (id: string) => requestVoid(`/reminders/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  listReminderAttempts: () => requestJson<{ items: GenericReminderAttempt[] }>("/reminder-attempts"),
+  testGenericReminder: (id: string) => requestJson<ReminderTestResult>(`/reminders/${encodeURIComponent(id)}/test`, { method: "POST" }),
+  getReminderSchedulerStatus: () => requestJson<SchedulerStatus>("/reminder-scheduler/status"),
+  syncReminderScheduler: () => requestJson<SchedulerStatus>("/reminder-scheduler/sync", { method: "POST" }),
+  getCalendar: (from: string, to: string) => requestJson<{ days: HolidayDay[]; coverage: Array<{ year: number; synchronizedAt: string }> }>(
+    `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  ),
+  syncCalendar: (years: number[]) => requestJson<{ updatedYears: number[]; unavailableYears: number[] }>("/calendar/sync", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ years })
+  }),
+  getUpcomingReminders: () => requestJson<{ items: GenericReminder[] }>("/dashboard/upcoming-reminders")
 };

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { ModuleId, ProfileResponse, ProfileUpdate } from "@workbench/contracts";
 import { ProfileCard } from "../profile/ProfileCard";
 import { api } from "../../lib/api";
+import { WorkdayCalendarCard } from "../calendar/WorkdayCalendarCard";
+import { UpcomingRemindersCard } from "../reminders/UpcomingRemindersCard";
 
 export interface ModuleDefinition {
   id: ModuleId;
@@ -47,5 +49,13 @@ export const moduleRegistry: Record<ModuleId, ModuleDefinition> = {
     minW: 6,
     minH: 4,
     render: () => <ProfileModule />
+  },
+  "workday-calendar": {
+    id: "workday-calendar", title: "中国工作日日历", minW: 4, minH: 5,
+    render: () => <WorkdayCalendarCard />
+  },
+  "upcoming-reminders": {
+    id: "upcoming-reminders", title: "近期提醒", minW: 4, minH: 5,
+    render: () => <UpcomingRemindersCard />
   }
 };

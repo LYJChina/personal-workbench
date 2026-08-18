@@ -2,7 +2,6 @@
 
 import { createServer as createHttpServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 
@@ -13,6 +12,13 @@ async function listen(server: Server): Promise<number> {
 
 async function close(server: Server): Promise<void> {
   await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
+}
+
+async function availablePort(): Promise<number> {
+  const reservation = createHttpServer();
+  const port = await listen(reservation);
+  await close(reservation);
+  return port;
 }
 
 describe("loopback development proxy", () => {
@@ -53,18 +59,24 @@ describe("loopback development proxy", () => {
     });
     const apiPort = await listen(apiServer);
     process.env.LYJ_WORKBENCH_API_PORT = String(apiPort);
+    const { resolveDevApiTarget } = await import("../vite-dev-config");
+    const vitePort = await availablePort();
 
     viteServer = await createViteServer({
-      root: resolve(process.cwd()),
-      configFile: resolve(process.cwd(), "vite.config.ts"),
-      configLoader: "runner",
+      root: process.cwd(),
+      configFile: false,
       logLevel: "silent",
-      server: { host: "127.0.0.1", port: 0, strictPort: true }
+      server: {
+        host: "127.0.0.1",
+        port: vitePort,
+        strictPort: true,
+        proxy: { "/api": { target: resolveDevApiTarget(String(apiPort)), changeOrigin: false } }
+      }
     });
     await viteServer.listen();
-    const vitePort = (viteServer.httpServer!.address() as AddressInfo).port;
+    const listeningPort = (viteServer.httpServer!.address() as AddressInfo).port;
 
-    const response = await fetch(`http://127.0.0.1:${vitePort}/api/health`);
+    const response = await fetch(`http://127.0.0.1:${listeningPort}/api/health`);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-controlled-api")).toBe("reached");

@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$TaskName = 'LYJWorkBench-OutboundCheckin'
+$TaskNames = @('LYJWorkBench-ReminderRunner', 'LYJWorkBench-OutboundCheckin')
 $TaskPath = '\'
 
 if ($Port -notmatch '^[1-9]\d*$') {
@@ -15,8 +15,10 @@ if (-not [int]::TryParse($Port, [ref]$ParsedPort) -or $ParsedPort -gt 65535) {
     throw 'PORT must be an integer from 1 through 65535.'
 }
 
-$Task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($null -ne $Task) {
+$StoppedTaskNames = @()
+foreach ($TaskName in $TaskNames) {
+    $Task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -eq $Task) { continue }
     if ($Task.TaskPath -ne $TaskPath -or $Task.TaskName -ne $TaskName) {
         throw 'Scheduled task identity did not match the expected root task.'
     }
@@ -31,8 +33,9 @@ if ($null -ne $Task) {
         throw 'Scheduled task identity changed during backup preparation.'
     }
     if ([string]$Task.State -eq 'Running') {
-        throw 'The exact reminder task is still running. Wait for it to stop, then run backup preparation again.'
+        throw 'An exact reminder task is still running. Wait for it to stop, then run backup preparation again.'
     }
+    $StoppedTaskNames += $TaskName
 }
 
 $Listener = Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $ParsedPort -State Listen -ErrorAction SilentlyContinue
@@ -50,6 +53,6 @@ if ([string]::IsNullOrWhiteSpace($DataRoot)) {
 $DataDirectory = Join-Path $DataRoot 'LYJWorkBench'
 Write-Output "Backup preparation complete. No LYJ Workbench server is listening on 127.0.0.1:$ParsedPort."
 Write-Output "Copy SQLite and uploads from: $DataDirectory"
-if ($null -ne $Task) {
-    Write-Output "After the backup, re-enable only $TaskPath$TaskName."
+foreach ($StoppedTaskName in $StoppedTaskNames) {
+    Write-Output "After the backup, re-enable only $TaskPath$StoppedTaskName."
 }

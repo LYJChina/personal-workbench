@@ -1,7 +1,11 @@
 import type Database from "better-sqlite3";
 import type { DashboardLayout, NavigationItem, Theme } from "@workbench/contracts";
 
-const defaultLayout: DashboardLayout[] = [{ moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true }];
+const defaultLayout: DashboardLayout[] = [
+  { moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true },
+  { moduleId: "workday-calendar", x: 4, y: 0, w: 4, h: 5, enabled: true },
+  { moduleId: "upcoming-reminders", x: 8, y: 0, w: 4, h: 5, enabled: true }
+];
 
 const defaultNavigation: NavigationItem[] = [
   { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },
@@ -77,8 +81,12 @@ export class PreferencesRepository {
 
   private seed(): void {
     const seed = this.database.transaction(() => {
-      const insertLayout = this.database.prepare("INSERT OR IGNORE INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)");
-      defaultLayout.forEach((item) => insertLayout.run(item.moduleId, item.x, item.y, item.w, item.h, Number(item.enabled)));
+      const layoutSeeded = this.database.prepare("SELECT 1 FROM app_settings WHERE key = 'dashboard-v2-seeded'").get();
+      if (!layoutSeeded) {
+        const insertLayout = this.database.prepare("INSERT OR IGNORE INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)");
+        defaultLayout.forEach((item) => insertLayout.run(item.moduleId, item.x, item.y, item.w, item.h, Number(item.enabled)));
+        this.database.prepare("INSERT INTO app_settings (key, value) VALUES ('dashboard-v2-seeded', '1')").run();
+      }
       const insertNavigation = this.database.prepare("INSERT OR IGNORE INTO navigation_items (id, label, path, position, visible, disabled) VALUES (?, ?, ?, ?, ?, ?)");
       defaultNavigation.forEach((item) => insertNavigation.run(item.id, item.label, item.path, item.position, Number(item.visible), Number(item.disabled)));
       this.database.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('theme', 'light')").run();

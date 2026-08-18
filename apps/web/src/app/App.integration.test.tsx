@@ -46,6 +46,16 @@ describe("complete application navigation", () => {
         subject: "提交外勤打卡提醒", body: "请提交本周外勤打卡。", nextRun: null,
         schedulerReinstallRequired: false, schedulerReinstallInstruction: "", lastSuccess: null, lastFailure: null
       });
+      if (path === "/api/reminders") return json({ items: [{
+        id: "outbound-checkin", name: "外勤打卡", enabled: false, lifecycle: "recurring",
+        scheduleType: "weekly", startDate: "2026-08-18", localTime: "09:00", weekdays: [1],
+        monthDay: null, totalOccurrences: null, successfulOccurrences: 0, recipient: "",
+        subject: "提交外勤打卡提醒", body: "请提交本周外勤打卡。", nextRun: null, calendarBlocked: false
+      }] });
+      if (path === "/api/reminder-attempts") return json({ items: [] });
+      if (path === "/api/reminder-scheduler/status") return json({
+        installed: false, synchronized: false, taskName: "LYJWorkBench-ReminderRunner", message: "尚未同步"
+      });
       return json({ error: { message: `Unexpected integration request: ${method} ${path}` } }, 500);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -83,8 +93,8 @@ describe("complete application navigation", () => {
     await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "light"));
 
     await user.click(screen.getByRole("link", { name: "提醒事项" }));
-    expect(await screen.findByRole("heading", { name: "外勤打卡邮件提醒" })).toBeVisible();
-    expect(screen.getByLabelText("收件邮箱")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "提醒事项" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "等待执行" })).toHaveTextContent("外勤打卡");
     expect(screen.getByText("密码保险箱")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("密码保险箱").closest("a")).toBeNull();
   });
