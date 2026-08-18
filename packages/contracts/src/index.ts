@@ -35,7 +35,7 @@ export const ProfileUpdateSchema = ProfileSchema.pick({
   employeeNumber: z.string().trim().min(1).max(100)
 });
 
-export const ModuleIdSchema = z.enum(["profile"]);
+export const ModuleIdSchema = z.enum(["profile", "workday-calendar", "upcoming-reminders"]);
 
 export const DashboardLayoutSchema = z.object({
   moduleId: ModuleIdSchema,

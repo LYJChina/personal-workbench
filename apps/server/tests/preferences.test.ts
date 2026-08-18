@@ -26,7 +26,11 @@ describe("workspace preferences API", () => {
     ]);
 
     expect(layout.status).toBe(200);
-    expect(layout.body).toEqual([{ moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true }]);
+    expect(layout.body).toEqual([
+      { moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true },
+      { moduleId: "workday-calendar", x: 4, y: 0, w: 4, h: 5, enabled: true },
+      { moduleId: "upcoming-reminders", x: 8, y: 0, w: 4, h: 5, enabled: true }
+    ]);
     expect(navigation.body.map((item: { id: string }) => item.id)).toEqual(["home", "ai-office", "reminders", "vault-coming-soon", "settings"]);
     expect(navigation.body.find((item: { id: string }) => item.id === "vault-coming-soon")).toMatchObject({ disabled: true, visible: true });
     expect(theme.body).toEqual({ theme: "light" });
