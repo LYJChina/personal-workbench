@@ -346,6 +346,132 @@ describe("Monday outbound check-in reminder", () => {
     expect(timers.clears).toBe(1);
   });
 
+  it("retries an indeterminate renewal error and keeps the pending send exclusively owned", async () => {
+    const first = openRepository();
+    first.repository.save("outbound-checkin", {
+      enabled: true,
+      localTime: "09:00",
+      recipient: "me@example.com",
+      subject: "提交外勤打卡提醒",
+      body: "请提交本周外勤打卡。"
+    }, mondayAtNine);
+    const secondDatabase = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    const secondRepository = new ReminderRepository(secondDatabase);
+    const timers = new ManualHeartbeatTimers();
+    const renewClaim = first.repository.renewClaim.bind(first.repository);
+    let renewalAttempts = 0;
+    vi.spyOn(first.repository, "renewClaim").mockImplementation((...args) => {
+      renewalAttempts += 1;
+      if (renewalAttempts === 1) throw new Error("SQLITE_BUSY: transient test lock");
+      return renewClaim(...args);
+    });
+    let currentMs = mondayAtNine.getTime();
+    let releaseFirst!: () => void;
+    const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let firstStarted!: () => void;
+    const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+    let sends = 0;
+    const channel: NotificationChannel = {
+      send: async () => {
+        sends += 1;
+        if (sends === 1) {
+          firstStarted();
+          await release;
+          return { status: "failure", category: "timeout" };
+        }
+        return { status: "success" };
+      }
+    };
+
+    const firstRun = runDueReminders(mondayAtNine, {
+      repository: first.repository,
+      channel,
+      claimToken: () => "first-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => new Date(currentMs),
+      timers
+    });
+    await started;
+    currentMs += 50;
+    timers.fire();
+    currentMs += 25;
+    timers.fire();
+    currentMs += 50;
+    const secondSummary = await runDueReminders(new Date(currentMs), {
+      repository: secondRepository,
+      channel,
+      claimToken: () => "second-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => new Date(currentMs),
+      timers: new ManualHeartbeatTimers()
+    });
+    releaseFirst();
+    const firstSummary = await firstRun;
+    const reminder = first.repository.get("outbound-checkin", new Date(currentMs));
+    const delivered = first.repository.wasDelivered("outbound-checkin", "2026-08-24");
+    first.database.close();
+    secondDatabase.close();
+
+    expect(renewalAttempts).toBe(2);
+    expect(sends).toBe(1);
+    expect(secondSummary).toEqual({ checked: 1, sent: 0, failed: 0 });
+    expect(firstSummary).toEqual({ checked: 1, sent: 0, failed: 1 });
+    expect(delivered).toBe(false);
+    expect(reminder.lastFailure).toMatchObject({ localDate: "2026-08-24", category: "timeout" });
+    expect(timers.clears).toBe(1);
+  });
+
+  it("does not overlap reentrant heartbeat ticks", async () => {
+    const { database, repository } = openRepository();
+    repository.save("outbound-checkin", {
+      enabled: true,
+      localTime: "09:00",
+      recipient: "me@example.com",
+      subject: "提交外勤打卡提醒",
+      body: "请提交本周外勤打卡。"
+    }, mondayAtNine);
+    const timers = new ManualHeartbeatTimers();
+    const renewClaim = repository.renewClaim.bind(repository);
+    let activeRenewals = 0;
+    let maxActiveRenewals = 0;
+    let renewalAttempts = 0;
+    vi.spyOn(repository, "renewClaim").mockImplementation((...args) => {
+      activeRenewals += 1;
+      renewalAttempts += 1;
+      maxActiveRenewals = Math.max(maxActiveRenewals, activeRenewals);
+      if (renewalAttempts === 1) timers.fire();
+      const renewed = renewClaim(...args);
+      activeRenewals -= 1;
+      return renewed;
+    });
+    let releaseSend!: () => void;
+    const release = new Promise<void>((resolve) => { releaseSend = resolve; });
+    let sendStarted!: () => void;
+    const started = new Promise<void>((resolve) => { sendStarted = resolve; });
+
+    const run = runDueReminders(mondayAtNine, {
+      repository,
+      channel: { send: async () => { sendStarted(); await release; return { status: "success" }; } },
+      claimToken: () => "owner-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => new Date(mondayAtNine.getTime() + 25),
+      timers
+    });
+    await started;
+    timers.fire();
+    releaseSend();
+    const summary = await run;
+    database.close();
+
+    expect(renewalAttempts).toBe(1);
+    expect(maxActiveRenewals).toBe(1);
+    expect(summary).toEqual({ checked: 1, sent: 1, failed: 0 });
+    expect(timers.clears).toBe(1);
+  });
+
   it("reports failure and stops heartbeat when a pending sender loses token ownership", async () => {
     const first = openRepository();
     first.repository.save("outbound-checkin", {

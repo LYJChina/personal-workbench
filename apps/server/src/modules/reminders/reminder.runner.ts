@@ -52,7 +52,8 @@ export async function runDueReminders(now: Date, dependencies: ReminderRunnerDep
   const leaseExpiresAt = new Date(now.getTime() + claimLeaseMs);
   if (!dependencies.repository.acquireDeliveryClaim(reminder.id, localDate, token, now, leaseExpiresAt)) return summary;
 
-  let ownsClaim = true;
+  let claimOwnershipLost = false;
+  let renewalInProgress = false;
   let heartbeatStopped = false;
   let heartbeatHandle: unknown;
   const stopHeartbeat = () => {
@@ -61,20 +62,26 @@ export async function runDueReminders(now: Date, dependencies: ReminderRunnerDep
     timers.clearInterval(heartbeatHandle);
   };
   heartbeatHandle = timers.setInterval(() => {
-    if (!ownsClaim) return;
+    if (claimOwnershipLost || renewalInProgress) return;
+    renewalInProgress = true;
     const renewedAt = clock();
     try {
-      ownsClaim = dependencies.repository.renewClaim(
+      const renewed = dependencies.repository.renewClaim(
         reminder.id,
         localDate,
         token,
         renewedAt,
         new Date(renewedAt.getTime() + claimLeaseMs)
       );
+      if (!renewed) {
+        claimOwnershipLost = true;
+        stopHeartbeat();
+      }
     } catch {
-      ownsClaim = false;
+      // A renewal exception leaves ownership unknown; only a token mismatch proves loss.
+    } finally {
+      renewalInProgress = false;
     }
-    if (!ownsClaim) stopHeartbeat();
   }, heartbeatIntervalMs);
 
   let result;
@@ -85,7 +92,7 @@ export async function runDueReminders(now: Date, dependencies: ReminderRunnerDep
   } finally {
     stopHeartbeat();
   }
-  if (!ownsClaim) {
+  if (claimOwnershipLost) {
     summary.failed = 1;
     return summary;
   }
