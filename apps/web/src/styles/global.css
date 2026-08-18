@@ -75,6 +75,9 @@ button, .button-primary, .button-secondary, .button-ghost { min-height: var(--co
 .feedback-banner.error, [role="alert"] { color: var(--danger-color); }
 
 .dashboard-page { min-width: 0; }
+.dashboard-daily-quote { display: grid; gap: .18rem; }
+.dashboard-daily-quote p { margin: 0; color: var(--heading-color); font-size: 1rem; font-weight: 650; line-height: 1.6; }
+.dashboard-daily-quote cite { color: var(--muted-text-color); font-size: .78rem; font-style: normal; }
 .dashboard-grid { min-width: 0; margin: 0 -.75rem; }
 .dashboard-module { position: relative; overflow: auto; padding: clamp(1.1rem, 2.5vw, 1.65rem); border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--surface-background); box-shadow: var(--shadow-sm); }
 .dashboard-grid[data-editable="true"] .dashboard-module { border-style: dashed; border-color: var(--primary-color); }

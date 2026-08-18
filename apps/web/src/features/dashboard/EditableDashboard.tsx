@@ -3,11 +3,13 @@ import ReactGridLayout, { type Layout } from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 import type { DashboardLayout } from "@workbench/contracts";
 import { moduleRegistry } from "./moduleRegistry";
+import { dailyQuote } from "./dailyQuotes";
 import { Icon } from "../../app/Icon";
 
 interface EditableDashboardProps {
   initialLayout: DashboardLayout[];
   onSave: (layout: DashboardLayout[]) => Promise<void>;
+  now?: Date;
 }
 
 function toGridLayout(layout: DashboardLayout[], columns = 12): Layout {
@@ -25,13 +27,23 @@ function toGridLayout(layout: DashboardLayout[], columns = 12): Layout {
   });
 }
 
-export function EditableDashboard({ initialLayout, onSave }: EditableDashboardProps) {
+export function EditableDashboard({ initialLayout, onSave, now }: EditableDashboardProps) {
   const [layout, setLayout] = useState(initialLayout);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gridWidth, setGridWidth] = useState(1200);
+  const [currentDate, setCurrentDate] = useState(() => now ?? new Date());
   const gridContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (now) {
+      setCurrentDate(now);
+      return;
+    }
+    const timer = window.setInterval(() => setCurrentDate(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [now]);
 
   useEffect(() => {
     const element = gridContainerRef.current;
@@ -65,10 +77,12 @@ export function EditableDashboard({ initialLayout, onSave }: EditableDashboardPr
     }));
   }
 
+  const quote = dailyQuote(now ?? currentDate);
+
   return (
     <section aria-label="工作台" className="dashboard-page">
       <div className="dashboard-toolbar page-heading">
-        <div><span className="eyebrow">PERSONAL SPACE</span><h2>我的主页</h2><p>下午好，今天也稳稳地把事情做好。</p></div>
+        <div className="dashboard-daily-quote"><p>{quote.text}</p><cite>——{quote.author}</cite></div>
         {editing
           ? <button className="button-primary" type="button" disabled={saving} onClick={() => void finishEditing()}><Icon name="check" size={17} />完成编辑</button>
           : <button className="button-secondary" type="button" onClick={() => { setError(null); setEditing(true); }}><Icon name="edit" size={17} />编辑工作台</button>}
