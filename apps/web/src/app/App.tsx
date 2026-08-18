@@ -10,10 +10,12 @@ import { api } from "../lib/api";
 import { Sidebar } from "./Sidebar";
 import { ThemeProvider } from "./ThemeProvider";
 import { Icon } from "./Icon";
+import { AppearanceProvider } from "./AppearanceProvider";
 
 function Shell() {
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">跳到主要内容</a>
       <Sidebar />
       <div className="app-main">
         <header className="topbar">
@@ -45,16 +47,18 @@ function HomePage() {
 
 export function App() {
   return (
-    <ThemeProvider>
-      <Routes>
-        <Route element={<Shell />}>
-          <Route index element={<HomePage />} />
-          <Route path="ai-office" element={<AiOfficePage />} />
-          <Route path="ai-office/daily-report" element={<DailyReportPage />} />
-          <Route path="reminders" element={<ReminderPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-      </Routes>
-    </ThemeProvider>
+    <AppearanceProvider>
+      <ThemeProvider>
+        <Routes>
+          <Route element={<Shell />}>
+            <Route index element={<HomePage />} />
+            <Route path="ai-office" element={<AiOfficePage />} />
+            <Route path="ai-office/daily-report" element={<DailyReportPage />} />
+            <Route path="reminders" element={<ReminderPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+        </Routes>
+      </ThemeProvider>
+    </AppearanceProvider>
   );
 }

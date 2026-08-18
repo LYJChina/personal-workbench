@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ThemeProvider } from "../../app/ThemeProvider";
 import { SettingsPage, type SettingsApi } from "./SettingsPage";
+import { AppearanceProvider, defaultAppearance } from "../../app/AppearanceProvider";
 
 const configuredSettings = {
   deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKeyConfigured: true },
@@ -27,9 +28,11 @@ function createApi(): SettingsApi {
 
 function renderPage(settingsApi = createApi()) {
   render(
-    <ThemeProvider initialTheme="light" onSave={vi.fn().mockResolvedValue(undefined)}>
-      <SettingsPage api={settingsApi} />
-    </ThemeProvider>
+    <AppearanceProvider initialAppearance={defaultAppearance}>
+      <ThemeProvider initialTheme="light" onSave={vi.fn().mockResolvedValue(undefined)}>
+        <SettingsPage api={settingsApi} />
+      </ThemeProvider>
+    </AppearanceProvider>
   );
   return settingsApi;
 }
@@ -118,14 +121,31 @@ describe("SettingsPage", () => {
   it("reuses the existing theme provider for the appearance section", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
-      <ThemeProvider initialTheme="light" onSave={onSave}>
-        <SettingsPage api={createApi()} />
-      </ThemeProvider>
+      <AppearanceProvider initialAppearance={defaultAppearance}>
+        <ThemeProvider initialTheme="light" onSave={onSave}>
+          <SettingsPage api={createApi()} />
+        </ThemeProvider>
+      </AppearanceProvider>
     );
     await screen.findByText("外观");
 
     fireEvent.change(screen.getByLabelText("主题"), { target: { value: "dark" } });
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith("dark"));
+  });
+
+  it("previews skin, density, radius and glass settings immediately", async () => {
+    renderPage();
+    await screen.findByText("外观");
+
+    fireEvent.click(screen.getByLabelText(/纸间白/));
+    fireEvent.change(screen.getByLabelText("界面密度"), { target: { value: "compact" } });
+    fireEvent.change(screen.getByLabelText("圆角风格"), { target: { value: "subtle" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /通透面板/ }));
+
+    expect(document.documentElement).toHaveAttribute("data-skin", "paper");
+    expect(document.documentElement).toHaveAttribute("data-density", "compact");
+    expect(document.documentElement).toHaveAttribute("data-radius", "subtle");
+    expect(document.documentElement).toHaveAttribute("data-glass", "false");
   });
 });

@@ -1,0 +1,108 @@
+/*
+ * Skin contract: components only consume semantic variables. To add a skin,
+ * register its name in AppearanceProvider and provide light/dark token blocks.
+ */
+[data-theme="light"][data-skin="aurora"] {
+  --page-background: #eef2ff;
+  --surface-background: rgb(255 255 255 / 82%);
+  --surface-subtle: rgb(244 247 255 / 82%);
+  --text-color: #303956;
+  --heading-color: #18213f;
+  --muted-text-color: #5d6683;
+  --faint-text-color: #79829d;
+  --border-color: rgb(126 139 190 / 22%);
+  --border-strong: rgb(104 119 178 / 38%);
+  --primary-color: #5b67d6;
+  --primary-hover: #4753be;
+  --primary-soft: #e2e7ff;
+  --primary-soft-text: #3f4cb6;
+  --accent-color: #8b5cc7;
+  --accent-soft: #f0e7ff;
+  --shadow-sm: 0 8px 28px rgb(68 76 134 / 8%);
+  --shadow-md: 0 18px 48px rgb(68 76 134 / 14%);
+  --focus-ring: rgb(91 103 214 / 28%);
+  --backdrop-art: radial-gradient(circle at 78% 10%, rgb(169 180 255 / 46%), transparent 28rem), radial-gradient(circle at 18% 86%, rgb(210 183 255 / 34%), transparent 26rem), linear-gradient(145deg, #f7f9ff 0%, #edf1ff 55%, #f6f0ff 100%);
+}
+
+[data-theme="dark"][data-skin="aurora"] {
+  --page-background: #11152c;
+  --surface-background: rgb(29 34 68 / 84%);
+  --surface-subtle: rgb(22 27 57 / 84%);
+  --text-color: #dce1ff;
+  --heading-color: #f5f6ff;
+  --muted-text-color: #b8c0e5;
+  --faint-text-color: #929bc6;
+  --border-color: rgb(171 181 255 / 17%);
+  --border-strong: rgb(171 181 255 / 31%);
+  --primary-color: #a9b2ff;
+  --primary-hover: #c3c9ff;
+  --primary-soft: #30396f;
+  --primary-soft-text: #d9ddff;
+  --accent-color: #d3a9ff;
+  --accent-soft: #44305f;
+  --shadow-sm: 0 8px 28px rgb(0 0 0 / 20%);
+  --shadow-md: 0 18px 48px rgb(0 0 0 / 32%);
+  --focus-ring: rgb(169 178 255 / 32%);
+  --backdrop-art: radial-gradient(circle at 78% 10%, rgb(99 112 220 / 24%), transparent 30rem), radial-gradient(circle at 18% 86%, rgb(136 77 181 / 18%), transparent 28rem), #11152c;
+}
+
+[data-theme="light"][data-skin="paper"] {
+  --page-background: #f4f5f7;
+  --surface-background: rgb(255 255 255 / 94%);
+  --surface-subtle: #f7f8fa;
+  --text-color: #3f4652;
+  --heading-color: #1e2530;
+  --muted-text-color: #636c79;
+  --faint-text-color: #818996;
+  --border-color: #e1e4e8;
+  --border-strong: #cbd0d7;
+  --primary-color: #3f5f91;
+  --primary-hover: #304b75;
+  --primary-soft: #e6edf7;
+  --primary-soft-text: #304f7e;
+  --accent-color: #98613f;
+  --accent-soft: #f4e9e1;
+  --shadow-sm: 0 4px 18px rgb(35 42 54 / 6%);
+  --shadow-md: 0 14px 36px rgb(35 42 54 / 10%);
+  --focus-ring: rgb(63 95 145 / 24%);
+  --backdrop-art: linear-gradient(135deg, #f8f9fa, #eef0f3);
+}
+
+[data-theme="dark"][data-skin="paper"] {
+  --page-background: #17191d;
+  --surface-background: rgb(35 38 44 / 94%);
+  --surface-subtle: #1e2126;
+  --text-color: #e1e4e9;
+  --heading-color: #f8f9fb;
+  --muted-text-color: #bdc3cc;
+  --faint-text-color: #969eaa;
+  --border-color: #3a3e46;
+  --border-strong: #515761;
+  --primary-color: #a9c7f3;
+  --primary-hover: #c8dcf8;
+  --primary-soft: #2c405d;
+  --primary-soft-text: #d6e6fc;
+  --accent-color: #e4b392;
+  --accent-soft: #513728;
+  --backdrop-art: #17191d;
+}
+
+[data-theme="light"][data-skin="sage"] { --backdrop-art: linear-gradient(145deg, #f7fbfa, #eef7f5); }
+[data-theme="dark"][data-skin="sage"] { --backdrop-art: #071413; }
+
+[data-density="compact"] { --content-padding: clamp(1rem, 2.5vw, 2rem); --control-height: 2.35rem; --section-gap: .75rem; }
+[data-density="comfortable"] { --content-padding: clamp(1.5rem, 4vw, 3.25rem); --control-height: 2.7rem; --section-gap: 1rem; }
+[data-radius="rounded"] { --radius-md: 1rem; --radius-lg: 1.35rem; --control-radius: .72rem; }
+[data-radius="subtle"] { --radius-md: .5rem; --radius-lg: .7rem; --control-radius: .4rem; }
+
+[data-glass="true"] .sidebar,
+[data-glass="true"] .topbar,
+[data-glass="true"] .dashboard-module,
+[data-glass="true"] .ai-tool-card,
+[data-glass="true"] .feature-hero,
+[data-glass="true"] .daily-report-input,
+[data-glass="true"] .daily-report-result,
+[data-glass="true"] .daily-report-history article,
+[data-glass="true"] .settings-page > section,
+[data-glass="true"] .reminder-form,
+[data-glass="true"] .schedule-card { backdrop-filter: blur(18px) saturate(120%); }

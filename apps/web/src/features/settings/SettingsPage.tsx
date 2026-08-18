@@ -10,6 +10,7 @@ import type {
 import { useTheme } from "../../app/ThemeProvider";
 import { api as defaultApi } from "../../lib/api";
 import { Icon } from "../../app/Icon";
+import { useAppearance, type WorkbenchSkin } from "../../app/AppearanceProvider";
 
 export interface SettingsApi {
   getSettings(): Promise<SettingsResponse>;
@@ -31,6 +32,7 @@ function messageFor(error: unknown): string {
 
 export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProps) {
   const { theme, setTheme } = useTheme();
+  const { appearance, updateAppearance, resetAppearance } = useAppearance();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
@@ -145,8 +147,32 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
       </section>
 
       <section aria-labelledby="appearance-heading">
-        <div className="settings-section-heading"><div className="card-icon violet"><Icon name="palette" /></div><div><h3 id="appearance-heading">外观</h3><p>选择你更舒服的工作环境</p></div></div>
-        <label className="theme-control">主题 <select value={theme} onChange={(event) => void setTheme(event.target.value as typeof theme)}><option value="light">浅色模式</option><option value="dark">深色模式</option></select></label>
+        <div className="settings-section-heading"><div className="card-icon violet"><Icon name="palette" /></div><div><h3 id="appearance-heading">外观</h3><p>你的外观工作室；所有偏好仅保存在本机浏览器</p></div></div>
+        <fieldset className="skin-picker">
+          <legend>界面皮肤</legend>
+          <div className="skin-options">
+            {([
+              ["aurora", "云境蓝", "蓝紫渐变与通透面板"],
+              ["paper", "纸间白", "克制、清晰的办公界面"],
+              ["sage", "青屿绿", "保留原来的沉静绿色"]
+            ] as const).map(([value, title, description]) => (
+              <label className={`skin-option skin-option-${value}`} key={value}>
+                <input type="radio" name="skin" value={value} checked={appearance.skin === value} onChange={() => updateAppearance({ skin: value as WorkbenchSkin })} />
+                <span className="skin-swatch" aria-hidden="true"><i /><i /><i /></span>
+                <span><strong>{title}</strong><small>{description}</small></span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div className="appearance-controls">
+          <label>主题<select value={theme} onChange={(event) => void setTheme(event.target.value as typeof theme)}><option value="light">浅色模式</option><option value="dark">深色模式</option></select></label>
+          <label>界面密度<select value={appearance.density} onChange={(event) => updateAppearance({ density: event.target.value as typeof appearance.density })}><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label>
+          <label>圆角风格<select value={appearance.radius} onChange={(event) => updateAppearance({ radius: event.target.value as typeof appearance.radius })}><option value="rounded">柔和圆角</option><option value="subtle">轻微圆角</option></select></label>
+        </div>
+        <div className="appearance-footer">
+          <label className="appearance-toggle"><input type="checkbox" checked={appearance.glass} onChange={(event) => updateAppearance({ glass: event.target.checked })} /><span><strong>通透面板</strong><small>启用背景模糊与轻微层次感</small></span></label>
+          <button className="button-secondary" type="button" onClick={resetAppearance}>恢复默认外观</button>
+        </div>
       </section>
     </section>
   );
