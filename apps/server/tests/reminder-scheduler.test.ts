@@ -1,6 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/app";
@@ -11,6 +13,8 @@ import { GenericReminderRepository } from "../src/modules/reminders/generic-remi
 import { runGenericReminders } from "../src/modules/reminders/generic-reminder.runner";
 import { nextReminderWake } from "../src/modules/reminders/reminder-wake";
 import { ReminderSchedulerService } from "../src/modules/reminders/reminder-scheduler";
+
+const execFileAsync = promisify(execFile);
 
 describe("one-click reminder scheduler", () => {
   let tempDir: string;
@@ -25,12 +29,12 @@ describe("one-click reminder scheduler", () => {
 
   it("executes only the fixed project script and parses its status", async () => {
     const run = vi.fn().mockResolvedValue({
-      stdout: JSON.stringify({ installed: true, synchronized: true, taskName: "LYJWorkBench-ReminderRunner", message: "已同步" }),
+      stdout: JSON.stringify({ installed: true, synchronized: true, taskName: "LYJWorkBench-ReminderRunner", message: "已同步", nextRun: "2026-08-18T01:00:00.000Z" }),
       stderr: ""
     });
     const service = new ReminderSchedulerService("C:\\project", run);
 
-    await expect(service.sync()).resolves.toMatchObject({ installed: true, synchronized: true });
+    await expect(service.sync()).resolves.toMatchObject({ installed: true, synchronized: true, nextRun: "2026-08-18T01:00:00.000Z" });
     expect(run).toHaveBeenCalledWith("powershell.exe", [
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
       "C:\\project\\scripts\\sync-reminder-task.ps1", "-ProjectRoot", "C:\\project"
@@ -47,6 +51,63 @@ describe("one-click reminder scheduler", () => {
     expect((await request(app).get("/api/reminder-scheduler/status")).body.installed).toBe(false);
     expect((await request(app).post("/api/reminder-scheduler/sync")).body.synchronized).toBe(true);
     expect(scheduler.sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("registers one invisible non-repeating task at the next wake-up", async () => {
+    const projectRoot = join(tempDir, "one shot project");
+    const entryPath = join(projectRoot, "apps", "server", "dist", "reminder-entry.cjs");
+    const launcherPath = join(projectRoot, "scripts", "run-reminders-hidden.vbs");
+    const wrapper = join(tempDir, "controlled-one-shot.ps1");
+    const actionMarker = join(tempDir, "action.txt");
+    const triggerMarker = join(tempDir, "trigger.txt");
+    const settingsMarker = join(tempDir, "settings.txt");
+    const script = resolve(process.cwd(), "../../scripts/sync-reminder-task.ps1");
+    await mkdir(join(projectRoot, "apps", "server", "dist"), { recursive: true });
+    await mkdir(join(projectRoot, "scripts"), { recursive: true });
+    await writeFile(entryPath, `if (process.argv[2] === "--next-wake") console.log(JSON.stringify({ nextRun: "2026-08-18T01:00:00.000Z" }));`);
+    await writeFile(launcherPath, "WScript.Quit 0");
+    await writeFile(wrapper, `
+      param([string]$Script, [string]$ProjectRoot, [string]$NodePath, [string]$EntryPath)
+      $script:Registered = $false
+      function Get-ScheduledTask {
+        param($TaskPath, $TaskName, $ErrorAction)
+        if ($TaskName -eq 'LYJWorkBench-OutboundCheckin' -or -not $script:Registered) { return $null }
+        return [pscustomobject]@{ TaskPath = '\\'; TaskName = $TaskName }
+      }
+      function New-ScheduledTaskAction {
+        param($Execute, $Argument, $WorkingDirectory)
+        Set-Content -LiteralPath $env:LYJ_ACTION -Value ($Execute + '|' + $Argument + '|' + $WorkingDirectory)
+        return [pscustomobject]@{}
+      }
+      function New-ScheduledTaskTrigger {
+        param([switch]$Once, $At, $RepetitionInterval, $RepetitionDuration)
+        Set-Content -LiteralPath $env:LYJ_TRIGGER -Value ($Once.IsPresent.ToString() + '|' + $At.ToString('o') + '|' + [string]$RepetitionInterval)
+        return [pscustomobject]@{ Repetition = [pscustomobject]@{ Interval = $null; Duration = $null } }
+      }
+      function New-ScheduledTaskSettingsSet {
+        param([switch]$StartWhenAvailable, $RestartCount, $RestartInterval, [switch]$Hidden)
+        Set-Content -LiteralPath $env:LYJ_SETTINGS -Value ($StartWhenAvailable.IsPresent.ToString() + '|' + $RestartCount + '|' + $RestartInterval.TotalMinutes)
+        return [pscustomobject]@{}
+      }
+      function New-ScheduledTaskPrincipal { param($UserId, $LogonType, $RunLevel) return [pscustomobject]@{} }
+      function Register-ScheduledTask { param($TaskPath, $TaskName, $Action, $Trigger, $Settings, $Principal, $Description, [switch]$Force) $script:Registered = $true }
+      function Unregister-ScheduledTask { throw 'Unexpected unregister' }
+      & $Script -ProjectRoot $ProjectRoot -NodePath $NodePath -ReminderEntryPath $EntryPath -Confirm:$false
+    `);
+
+    const result = await execFileAsync("powershell", [
+      "-NoProfile", "-File", wrapper, "-Script", script, "-ProjectRoot", projectRoot,
+      "-NodePath", process.execPath, "-EntryPath", entryPath
+    ], { env: { ...process.env, LYJ_ACTION: actionMarker, LYJ_TRIGGER: triggerMarker, LYJ_SETTINGS: settingsMarker } });
+
+    expect(result.stderr).toBe("");
+    expect((await readFile(actionMarker, "utf8")).toLowerCase()).toContain("wscript.exe");
+    expect((await readFile(actionMarker, "utf8")).toLowerCase()).toContain("run-reminders-hidden.vbs");
+    expect((await readFile(triggerMarker, "utf8")).trim()).toMatch(/^True\|.*\|$/);
+    expect((await readFile(settingsMarker, "utf8")).trim()).toBe("True|3|5");
+    expect(JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "{}")).toMatchObject({
+      installed: true, synchronized: true, nextRun: "2026-08-18T01:00:00.000Z"
+    });
   });
 
   it("selects the earliest future reminder without polling", () => {

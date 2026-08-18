@@ -33,7 +33,9 @@ function createApi(overrides: Partial<ReminderCenterApi> = {}): ReminderCenterAp
     listAttempts: vi.fn().mockResolvedValue({ items: [attempt] }),
     testReminder: vi.fn().mockResolvedValue({ status: "success", message: "测试邮件已发送" }),
     getSchedulerStatus: vi.fn().mockResolvedValue(unsynchronized),
-    syncScheduler: vi.fn().mockResolvedValue({ ...unsynchronized, installed: true, synchronized: true, message: "已同步" }),
+    syncScheduler: vi.fn().mockResolvedValue({
+      ...unsynchronized, installed: true, synchronized: true, message: "已同步", nextRun: "2026-08-18T01:00:00.000Z"
+    }),
     ...overrides
   };
 }
@@ -50,6 +52,7 @@ describe("generic reminder center", () => {
     await user.click(screen.getByRole("button", { name: "同步系统计划" }));
     expect(api.syncScheduler).toHaveBeenCalledTimes(1);
     expect((await screen.findAllByText("已同步")).length).toBeGreaterThan(0);
+    expect(screen.getByText("下次执行：2026年8月18日 09:00")).toBeVisible();
   });
 
   it("creates a finite workday email reminder", async () => {

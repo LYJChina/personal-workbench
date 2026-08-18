@@ -35,6 +35,14 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : "请求失败，请稍后重试";
 }
 
+function schedulerTime(value: string): string {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  return `${parts.year}年${Number(parts.month)}月${Number(parts.day)}日 ${parts.hour}:${parts.minute}`;
+}
+
 export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) {
   const [reminders, setReminders] = useState<GenericReminder[]>([]);
   const [attempts, setAttempts] = useState<GenericReminderAttempt[]>([]);
@@ -114,7 +122,7 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
 
   return <section className="reminder-page reminder-center-page">
     <header className="page-heading reminder-center-heading"><div><span className="eyebrow">AUTOMATION</span><h2>提醒事项</h2><p>管理一次性、有限次数和常驻邮件提醒。</p></div><div className="heading-actions"><button type="button" className="button-secondary" disabled={syncing} onClick={() => void synchronize()}><Icon name="clock" size={17} />{syncing ? "同步中…" : "同步系统计划"}</button><button type="button" className="button-primary" onClick={() => setEditing(null)}>新建提醒</button></div></header>
-    <div className={`scheduler-banner ${scheduler?.synchronized ? "success" : "warning"}`}><div><strong>{scheduler?.synchronized ? "系统计划已同步" : "系统计划尚未同步"}</strong><p>{scheduler?.message ?? "无法读取系统计划状态"}</p></div><span className="status-chip neutral">{scheduler?.taskName ?? "LYJWorkBench-ReminderRunner"}</span></div>
+    <div className={`scheduler-banner ${scheduler?.synchronized ? "success" : "warning"}`}><div><strong>{scheduler?.synchronized ? "系统计划已同步" : "系统计划尚未同步"}</strong><p>{scheduler?.message ?? "无法读取系统计划状态"}</p>{scheduler?.nextRun && <p>下次执行：{schedulerTime(scheduler.nextRun)}</p>}</div><span className="status-chip neutral">{scheduler?.taskName ?? "LYJWorkBench-ReminderRunner"}</span></div>
     {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`feedback-banner ${feedback.kind}`}>{feedback.text}</p>}
     <div className="reminder-center-grid">
       <ReminderList reminders={reminders} filter={filter} onFilter={setFilter} onEdit={setEditing} onDelete={(item) => void remove(item)} onTest={(item) => void test(item)} />

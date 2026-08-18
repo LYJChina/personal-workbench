@@ -49,8 +49,10 @@ export class ReminderSchedulerService implements ReminderScheduler {
     const status = SchedulerStatusSchema.parse(JSON.parse(line));
     return {
       ...status,
-      message: status.synchronized
-        ? "系统计划已同步"
+      message: status.synchronized && !status.installed
+        ? "暂无待执行提醒"
+        : status.synchronized
+          ? "系统计划已同步"
         : status.installed
           ? "系统计划同步未完成"
           : "系统计划尚未同步"
