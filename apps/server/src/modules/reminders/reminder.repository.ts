@@ -164,6 +164,21 @@ export class ReminderRepository {
     return acquire.immediate();
   }
 
+  public renewClaim(
+    id: ReminderId,
+    localDate: string,
+    token: string,
+    renewedAt: Date,
+    expiresAt: Date
+  ): boolean {
+    const result = this.database.prepare(`
+      UPDATE reminder_delivery_claims
+      SET claimed_at = ?, claim_expires_at = ?
+      WHERE reminder_id = ? AND local_date = ? AND claim_token = ?
+    `).run(renewedAt.toISOString(), expiresAt.toISOString(), id, localDate, token);
+    return result.changes === 1;
+  }
+
   public completeDeliverySuccess(id: ReminderId, localDate: string, token: string, attemptedAt: Date): boolean {
     const complete = this.database.transaction(() => {
       const released = this.database.prepare(`

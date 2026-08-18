@@ -48,6 +48,32 @@ class RecordingChannel implements NotificationChannel {
   }
 }
 
+class ManualHeartbeatTimers {
+  public clears = 0;
+  public executions = 0;
+  public intervalMs: number | null = null;
+  private callback: (() => void) | null = null;
+
+  public setInterval(callback: () => void, intervalMs: number): object {
+    this.callback = () => {
+      this.executions += 1;
+      callback();
+    };
+    this.intervalMs = intervalMs;
+    return this;
+  }
+
+  public clearInterval(handle: unknown): void {
+    if (handle !== this || this.callback === null) return;
+    this.callback = null;
+    this.clears += 1;
+  }
+
+  public fire(): void {
+    this.callback?.();
+  }
+}
+
 describe("Monday outbound check-in reminder", () => {
   let tempDir: string;
 
@@ -225,6 +251,176 @@ describe("Monday outbound check-in reminder", () => {
     } finally {
       database.close();
     }
+  });
+
+  it("renews expiry only for the matching claim token", () => {
+    const { database, repository } = openRepository();
+    try {
+      expect(repository.acquireDeliveryClaim(
+        "outbound-checkin", "2026-08-24", "owner-token",
+        new Date("2026-08-24T01:00:00.000Z"), new Date("2026-08-24T01:01:00.000Z")
+      )).toBe(true);
+      expect(repository.renewClaim(
+        "outbound-checkin", "2026-08-24", "stale-token",
+        new Date("2026-08-24T01:00:30.000Z"), new Date("2026-08-24T01:02:00.000Z")
+      )).toBe(false);
+      expect(repository.renewClaim(
+        "outbound-checkin", "2026-08-24", "owner-token",
+        new Date("2026-08-24T01:00:30.000Z"), new Date("2026-08-24T01:02:00.000Z")
+      )).toBe(true);
+      expect(repository.acquireDeliveryClaim(
+        "outbound-checkin", "2026-08-24", "blocked-token",
+        new Date("2026-08-24T01:01:00.000Z"), new Date("2026-08-24T01:03:00.000Z")
+      )).toBe(false);
+      expect(repository.acquireDeliveryClaim(
+        "outbound-checkin", "2026-08-24", "replacement-token",
+        new Date("2026-08-24T01:02:00.000Z"), new Date("2026-08-24T01:03:00.000Z")
+      )).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("heartbeats a pending send beyond its original lease so a second runner cannot send", async () => {
+    const first = openRepository();
+    first.repository.save("outbound-checkin", {
+      enabled: true,
+      localTime: "09:00",
+      recipient: "me@example.com",
+      subject: "提交外勤打卡提醒",
+      body: "请提交本周外勤打卡。"
+    }, mondayAtNine);
+    const secondDatabase = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    const secondRepository = new ReminderRepository(secondDatabase);
+    const timers = new ManualHeartbeatTimers();
+    let currentMs = mondayAtNine.getTime();
+    let releaseFirst!: () => void;
+    const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let firstStarted!: () => void;
+    const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+    let sends = 0;
+    const channel: NotificationChannel = {
+      send: async () => {
+        sends += 1;
+        if (sends === 1) {
+          firstStarted();
+          await release;
+        }
+        return { status: "success" };
+      }
+    };
+
+    const firstRun = runDueReminders(mondayAtNine, {
+      repository: first.repository,
+      channel,
+      claimToken: () => "first-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => new Date(currentMs),
+      timers
+    });
+    await started;
+    currentMs += 75;
+    timers.fire();
+    currentMs += 50;
+    const secondSummary = await runDueReminders(new Date(currentMs), {
+      repository: secondRepository,
+      channel,
+      claimToken: () => "second-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => new Date(currentMs),
+      timers: new ManualHeartbeatTimers()
+    });
+    releaseFirst();
+    const firstSummary = await firstRun;
+    const delivered = first.repository.wasDelivered("outbound-checkin", "2026-08-24");
+    first.database.close();
+    secondDatabase.close();
+
+    expect(sends).toBe(1);
+    expect(secondSummary).toEqual({ checked: 1, sent: 0, failed: 0 });
+    expect(firstSummary).toEqual({ checked: 1, sent: 1, failed: 0 });
+    expect(delivered).toBe(true);
+    expect(timers.intervalMs).toBe(25);
+    expect(timers.clears).toBe(1);
+  });
+
+  it("reports failure and stops heartbeat when a pending sender loses token ownership", async () => {
+    const first = openRepository();
+    first.repository.save("outbound-checkin", {
+      enabled: true,
+      localTime: "09:00",
+      recipient: "me@example.com",
+      subject: "提交外勤打卡提醒",
+      body: "请提交本周外勤打卡。"
+    }, mondayAtNine);
+    const secondDatabase = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    const secondRepository = new ReminderRepository(secondDatabase);
+    const timers = new ManualHeartbeatTimers();
+    let currentMs = mondayAtNine.getTime();
+    let releaseSend!: () => void;
+    const release = new Promise<void>((resolve) => { releaseSend = resolve; });
+    const channel: NotificationChannel = { send: async () => { await release; return { status: "success" }; } };
+
+    const run = runDueReminders(mondayAtNine, {
+      repository: first.repository,
+      channel,
+      claimToken: () => "stale-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => new Date(currentMs),
+      timers
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    currentMs += 101;
+    expect(secondRepository.acquireDeliveryClaim(
+      "outbound-checkin", "2026-08-24", "new-owner",
+      new Date(currentMs), new Date(currentMs + 100)
+    )).toBe(true);
+    timers.fire();
+    releaseSend();
+    const summary = await run;
+
+    expect(summary).toEqual({ checked: 1, sent: 0, failed: 1 });
+    expect(first.repository.wasDelivered("outbound-checkin", "2026-08-24")).toBe(false);
+    expect(first.repository.completeDeliveryFailure(
+      "outbound-checkin", "2026-08-24", "new-owner", "timeout", new Date(currentMs)
+    )).toBe(true);
+    expect(timers.clears).toBe(1);
+    first.database.close();
+    secondDatabase.close();
+  });
+
+  it("stops heartbeat after a delivery failure so no timer remains active", async () => {
+    const { database, repository } = openRepository();
+    repository.save("outbound-checkin", {
+      enabled: true,
+      localTime: "09:00",
+      recipient: "me@example.com",
+      subject: "提交外勤打卡提醒",
+      body: "请提交本周外勤打卡。"
+    }, mondayAtNine);
+    const timers = new ManualHeartbeatTimers();
+
+    const summary = await runDueReminders(mondayAtNine, {
+      repository,
+      channel: new RecordingChannel({ status: "failure", category: "timeout" }),
+      claimToken: () => "failure-token",
+      claimLeaseMs: 100,
+      heartbeatIntervalMs: 25,
+      clock: () => mondayAtNine,
+      timers
+    });
+
+    expect(summary).toEqual({ checked: 1, sent: 0, failed: 1 });
+    expect(timers.clears).toBe(1);
+    timers.fire();
+    expect(timers.executions).toBe(0);
+    expect(repository.acquireDeliveryClaim(
+      "outbound-checkin", "2026-08-24", "retry-token", mondayAtNine, new Date(mondayAtNine.getTime() + 100)
+    )).toBe(true);
+    database.close();
   });
 
   it("allows only the claim owner to complete and makes owned failures retryable", () => {
