@@ -16,6 +16,8 @@ const reminder: Reminder = {
   subject: "提交外勤打卡提醒",
   body: "请提交本周外勤打卡。",
   nextRun: "2026-08-24T01:00:00.000Z",
+  schedulerReinstallRequired: true,
+  schedulerReinstallInstruction: "powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime 09:00",
   lastSuccess: { localDate: "2026-08-17", attemptedAt: "2026-08-17T01:00:00.000Z" },
   lastFailure: { localDate: "2026-08-10", attemptedAt: "2026-08-10T01:00:00.000Z", category: "timeout" }
 };
@@ -23,7 +25,12 @@ const reminder: Reminder = {
 function createApi(overrides: Partial<ReminderApi> = {}): ReminderApi {
   return {
     getReminder: vi.fn().mockResolvedValue(reminder),
-    updateReminder: vi.fn().mockImplementation(async (input) => ({ ...reminder, ...input })),
+    updateReminder: vi.fn().mockImplementation(async (input) => ({
+      ...reminder,
+      ...input,
+      schedulerReinstallRequired: true,
+      schedulerReinstallInstruction: `powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime ${input.localTime}`
+    })),
     testReminder: vi.fn().mockResolvedValue({ status: "success", message: "测试邮件已发送" }),
     ...overrides
   };
@@ -63,6 +70,18 @@ describe("outbound check-in reminder page", () => {
     expect(screen.getByText("下次运行").parentElement).toHaveTextContent("2026");
     expect(screen.getByText("上次成功").parentElement).toHaveTextContent("2026-08-17");
     expect(screen.getByText("上次失败").parentElement).toHaveTextContent("timeout");
+    const warning = screen.getByRole("complementary", { name: "任务计划同步警告" });
+    expect(warning).toHaveTextContent("任务计划时间尚未同步");
+    expect(warning).toHaveTextContent("powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime 09:00");
+  });
+
+  it("hides the scheduler warning when the installed trigger matches the configured time", async () => {
+    renderPage(createApi({
+      getReminder: vi.fn().mockResolvedValue({ ...reminder, schedulerReinstallRequired: false })
+    }));
+
+    await screen.findByDisplayValue("original@example.com");
+    expect(screen.queryByText(/任务计划时间尚未同步/)).not.toBeInTheDocument();
   });
 
   it("edits and saves recipient, time, copy, and enabled state", async () => {
@@ -88,6 +107,7 @@ describe("outbound check-in reminder page", () => {
       body: "请在今天提交外勤打卡。"
     }));
     expect(await screen.findByText("提醒设置已保存")).toBeVisible();
+    expect(screen.getByRole("complementary", { name: "任务计划同步警告" })).toHaveTextContent("scripts/install-reminder-task.ps1 -LocalTime 10:15");
   });
 
   it("shows pending and real success states for test-send", async () => {

@@ -75,6 +75,24 @@ CREATE TABLE IF NOT EXISTS reminder_delivery_attempts (
 CREATE INDEX IF NOT EXISTS reminder_delivery_attempts_status_idx
   ON reminder_delivery_attempts(reminder_id, status, attempted_at DESC);
 
+CREATE TABLE IF NOT EXISTS reminder_delivery_claims (
+  reminder_id TEXT NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL,
+  claim_token TEXT NOT NULL UNIQUE,
+  claimed_at TEXT NOT NULL,
+  claim_expires_at TEXT NOT NULL,
+  PRIMARY KEY(reminder_id, local_date)
+);
+
+CREATE INDEX IF NOT EXISTS reminder_delivery_claims_expiry_idx
+  ON reminder_delivery_claims(claim_expires_at);
+
+CREATE TABLE IF NOT EXISTS reminder_scheduler_state (
+  reminder_id TEXT PRIMARY KEY REFERENCES reminders(id) ON DELETE CASCADE,
+  synchronized_local_time TEXT NOT NULL,
+  synchronized_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,

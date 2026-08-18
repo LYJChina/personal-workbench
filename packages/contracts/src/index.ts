@@ -143,6 +143,8 @@ export const ReminderSchema = ReminderUpdateSchema.omit({ recipient: true }).ext
   id: ReminderIdSchema,
   weekday: z.literal(1),
   nextRun: z.string().nullable(),
+  schedulerReinstallRequired: z.boolean(),
+  schedulerReinstallInstruction: z.string(),
   lastSuccess: ReminderAttemptSchema.nullable(),
   lastFailure: ReminderAttemptSchema.required({ category: true }).nullable()
 });

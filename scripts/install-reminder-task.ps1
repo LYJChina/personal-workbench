@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $TaskName = 'LYJWorkBench-OutboundCheckin'
+$TaskPath = '\'
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
     $ProjectRoot = Join-Path $PSScriptRoot '..'
 }
@@ -41,5 +42,9 @@ $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $Principal = New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType Interactive -RunLevel Limited
 $Target = "$TaskName | Monday $LocalTime | node=$ResolvedNodePath | entry=$ResolvedReminderEntryPath | cwd=$ResolvedProjectRoot"
 if ($PSCmdlet.ShouldProcess($Target, 'Register current-user scheduled task')) {
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Description 'Send the weekly outbound check-in reminder.' -Force | Out-Null
+    Register-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Description 'Send the weekly outbound check-in reminder.' -Force | Out-Null
+    & $ResolvedNodePath $ResolvedReminderEntryPath '--reminder' 'outbound-checkin' '--scheduler-synchronized-time' $LocalTime
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The scheduled task was registered, but scheduler synchronization could not be recorded.'
+    }
 }

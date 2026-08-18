@@ -104,6 +104,12 @@ export function ReminderPage({ api: reminderApi = defaultApi }: ReminderPageProp
         </div>
       </form>
       {feedback && <p role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</p>}
+      {reminder.schedulerReinstallRequired && (
+        <aside aria-label="任务计划同步警告">
+          <p>任务计划时间尚未同步。请在 PowerShell 中运行：</p>
+          <code>{reminder.schedulerReinstallInstruction}</code>
+        </aside>
+      )}
       <dl>
         <div><dt>下次运行</dt><dd>{formatDateTime(reminder.nextRun)}</dd></div>
         <div><dt>上次成功</dt><dd>{reminder.lastSuccess ? `${reminder.lastSuccess.localDate} ${formatDateTime(reminder.lastSuccess.attemptedAt)}` : "暂无"}</dd></div>

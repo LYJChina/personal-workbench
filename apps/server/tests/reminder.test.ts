@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { resolveAppPaths } from "../src/config/paths";
 import { openDatabase } from "../src/db/database";
-import { parseReminderArguments } from "../src/reminder-entry";
+import { applySchedulerSynchronizationArguments, parseReminderArguments } from "../src/reminder-entry";
 import { EmailNotificationChannel, type MailTransportFactory } from "../src/modules/reminders/email-channel";
 import type { DeliveryResult, NotificationChannel, NotificationMessage } from "../src/modules/reminders/notification-channel";
 import { ReminderRepository } from "../src/modules/reminders/reminder.repository";
@@ -79,7 +79,9 @@ describe("Monday outbound check-in reminder", () => {
         body: "请提交本周外勤打卡。",
         nextRun: null,
         lastSuccess: null,
-        lastFailure: null
+        lastFailure: null,
+        schedulerReinstallRequired: true,
+        schedulerReinstallInstruction: "powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime 09:00"
       });
     } finally {
       database.close();
@@ -90,6 +92,50 @@ describe("Monday outbound check-in reminder", () => {
     expect(parseReminderArguments(["--reminder", "outbound-checkin"])).toBe("outbound-checkin");
     expect(() => parseReminderArguments(["--reminder", "other"])).toThrow("Invalid reminder arguments");
     expect(() => parseReminderArguments(["--reminder", "outbound-checkin", "--extra"])).toThrow("Invalid reminder arguments");
+  });
+
+  it("persists scheduler synchronization and flags every configured-time mismatch conservatively", () => {
+    const first = openRepository();
+    try {
+      expect(first.repository.get("outbound-checkin", mondayAtNine).schedulerReinstallRequired).toBe(true);
+      expect(applySchedulerSynchronizationArguments(
+        ["--reminder", "outbound-checkin", "--scheduler-synchronized-time", "09:00"],
+        first.repository,
+        new Date("2026-08-18T01:00:00.000Z")
+      )).toBe(true);
+      expect(first.repository.get("outbound-checkin", mondayAtNine).schedulerReinstallRequired).toBe(false);
+      first.repository.save("outbound-checkin", {
+        enabled: true,
+        localTime: "10:15",
+        recipient: "me@example.com",
+        subject: "提交外勤打卡提醒",
+        body: "请提交本周外勤打卡。"
+      }, mondayAtNine);
+      expect(first.repository.get("outbound-checkin", mondayAtNine)).toMatchObject({
+        schedulerReinstallRequired: true,
+        schedulerReinstallInstruction: "powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime 10:15"
+      });
+    } finally {
+      first.database.close();
+    }
+
+    const fresh = openRepository();
+    try {
+      expect(fresh.repository.get("outbound-checkin", mondayAtNine).schedulerReinstallRequired).toBe(true);
+      expect(applySchedulerSynchronizationArguments(
+        ["--reminder", "outbound-checkin", "--scheduler-synchronized-time", "10:15"],
+        fresh.repository,
+        new Date("2026-08-18T02:00:00.000Z")
+      )).toBe(true);
+      expect(fresh.repository.get("outbound-checkin", mondayAtNine).schedulerReinstallRequired).toBe(false);
+      expect(() => applySchedulerSynchronizationArguments(
+        ["--reminder", "other", "--scheduler-synchronized-time", "10:15"],
+        fresh.repository,
+        new Date()
+      )).toThrow("Invalid scheduler synchronization arguments");
+    } finally {
+      fresh.database.close();
+    }
   });
 
   it("sends an enabled due reminder once for the China local calendar date", async () => {
@@ -118,6 +164,88 @@ describe("Monday outbound check-in reminder", () => {
     expect(repository.wasDelivered("outbound-checkin", "2026-08-24")).toBe(true);
     expect(repository.get("outbound-checkin", mondayAtNine).lastSuccess).toMatchObject({ localDate: "2026-08-24" });
     database.close();
+  });
+
+  it("atomically leases one cross-process sender before either SMTP side effect completes", async () => {
+    const first = openRepository();
+    first.repository.save("outbound-checkin", {
+      enabled: true,
+      localTime: "09:00",
+      recipient: "me@example.com",
+      subject: "提交外勤打卡提醒",
+      body: "请提交本周外勤打卡。"
+    }, mondayAtNine);
+    const secondDatabase = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    const secondRepository = new ReminderRepository(secondDatabase);
+    let releaseSend!: () => void;
+    const release = new Promise<void>((resolve) => { releaseSend = resolve; });
+    let firstSendStarted!: () => void;
+    const started = new Promise<void>((resolve) => { firstSendStarted = resolve; });
+    let sends = 0;
+    const channel: NotificationChannel = {
+      send: async () => {
+        sends += 1;
+        firstSendStarted();
+        await release;
+        return { status: "success" };
+      }
+    };
+
+    const firstRun = runDueReminders(mondayAtNine, { repository: first.repository, channel });
+    await started;
+    const secondRun = runDueReminders(mondayAtNine, { repository: secondRepository, channel });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    releaseSend();
+    const summaries = await Promise.all([firstRun, secondRun]);
+    const delivered = first.repository.wasDelivered("outbound-checkin", "2026-08-24");
+    first.database.close();
+    secondDatabase.close();
+
+    expect(sends).toBe(1);
+    expect(summaries).toContainEqual({ checked: 1, sent: 1, failed: 0 });
+    expect(summaries).toContainEqual({ checked: 1, sent: 0, failed: 0 });
+    expect(delivered).toBe(true);
+  });
+
+  it("lets a new token replace an expired lease but not a live lease", () => {
+    const { database, repository } = openRepository();
+    try {
+      expect(repository.acquireDeliveryClaim(
+        "outbound-checkin", "2026-08-24", "first-token",
+        new Date("2026-08-24T01:00:00.000Z"), new Date("2026-08-24T01:01:00.000Z")
+      )).toBe(true);
+      expect(repository.acquireDeliveryClaim(
+        "outbound-checkin", "2026-08-24", "early-token",
+        new Date("2026-08-24T01:00:59.999Z"), new Date("2026-08-24T01:02:00.000Z")
+      )).toBe(false);
+      expect(repository.acquireDeliveryClaim(
+        "outbound-checkin", "2026-08-24", "replacement-token",
+        new Date("2026-08-24T01:01:00.000Z"), new Date("2026-08-24T01:02:00.000Z")
+      )).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("allows only the claim owner to complete and makes owned failures retryable", () => {
+    const { database, repository } = openRepository();
+    try {
+      const claimedAt = new Date("2026-08-24T01:00:00.000Z");
+      const expiresAt = new Date("2026-08-24T01:05:00.000Z");
+      expect(repository.acquireDeliveryClaim("outbound-checkin", "2026-08-24", "owner-token", claimedAt, expiresAt)).toBe(true);
+
+      expect(repository.completeDeliverySuccess("outbound-checkin", "2026-08-24", "stale-token", mondayAtNine)).toBe(false);
+      expect(repository.wasDelivered("outbound-checkin", "2026-08-24")).toBe(false);
+      expect(repository.completeDeliveryFailure("outbound-checkin", "2026-08-24", "stale-token", "timeout", mondayAtNine)).toBe(false);
+      expect(repository.acquireDeliveryClaim("outbound-checkin", "2026-08-24", "blocked-token", claimedAt, expiresAt)).toBe(false);
+
+      expect(repository.completeDeliveryFailure("outbound-checkin", "2026-08-24", "owner-token", "timeout", mondayAtNine)).toBe(true);
+      expect(repository.acquireDeliveryClaim("outbound-checkin", "2026-08-24", "retry-token", claimedAt, expiresAt)).toBe(true);
+      expect(repository.completeDeliverySuccess("outbound-checkin", "2026-08-24", "retry-token", mondayAtNine)).toBe(true);
+      expect(repository.wasDelivered("outbound-checkin", "2026-08-24")).toBe(true);
+    } finally {
+      database.close();
+    }
   });
 
   it.each([
@@ -353,30 +481,125 @@ describe("Monday outbound check-in reminder", () => {
 
   it("executes the installer in WhatIf mode against controlled paths without changing task state", async () => {
     const controlledRoot = join(tempDir, "controlled project");
-    const fakeNode = join(controlledRoot, "runtime", "node.exe");
-    const fakeEntry = join(controlledRoot, "apps", "server", "dist", "reminder-entry.js");
+    const fakeNode = process.execPath;
+    const fakeEntry = join(controlledRoot, "apps", "server", "dist", "reminder-entry.cjs");
+    const synchronizationMarker = join(tempDir, "whatif-synchronization.txt");
     await mkdir(join(controlledRoot, "runtime"), { recursive: true });
     await mkdir(join(controlledRoot, "apps", "server", "dist"), { recursive: true });
-    await writeFile(fakeNode, "controlled-node");
-    await writeFile(fakeEntry, "controlled-entry");
+    await writeFile(fakeEntry, `require("node:fs").writeFileSync(process.env.LYJ_SYNC_MARKER, process.argv.slice(2).join("|"));`);
     const script = resolve(process.cwd(), "../../scripts/install-reminder-task.ps1");
+    const environment = { ...process.env, LYJ_SYNC_MARKER: synchronizationMarker };
 
     const { stdout, stderr } = await execFileAsync("powershell", [
       "-NoProfile", "-File", script, "-WhatIf", "-ProjectRoot", controlledRoot,
       "-NodePath", fakeNode, "-ReminderEntryPath", fakeEntry, "-LocalTime", "10:15"
-    ]);
+    ], { env: environment });
 
     expect(stderr).toBe("");
     expect(stdout.match(/LYJWorkBench-OutboundCheckin/g)).toHaveLength(1);
     expect(stdout).toContain("Monday 10:15");
     expect(stdout).toContain(fakeNode);
     expect(stdout).toContain(fakeEntry);
+    await expect(readFile(synchronizationMarker, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 
     const defaultRoot = await execFileAsync("powershell", [
       "-NoProfile", "-File", script, "-WhatIf", "-NodePath", fakeNode,
       "-ReminderEntryPath", fakeEntry, "-LocalTime", "10:15"
-    ]);
+    ], { env: environment });
     expect(defaultRoot.stderr).toBe("");
     expect(defaultRoot.stdout).toContain(resolve(process.cwd(), "../.."));
+  });
+
+  it("marks scheduler synchronization only after a controlled successful registration", async () => {
+    const controlledRoot = join(tempDir, "managed install");
+    const fakeEntry = join(controlledRoot, "apps", "server", "dist", "reminder-entry.cjs");
+    const registrationMarker = join(tempDir, "registration.txt");
+    const synchronizationMarker = join(tempDir, "synchronization.txt");
+    const wrapper = join(tempDir, "managed-install.ps1");
+    const installer = resolve(process.cwd(), "../../scripts/install-reminder-task.ps1");
+    await mkdir(join(controlledRoot, "apps", "server", "dist"), { recursive: true });
+    await writeFile(fakeEntry, `
+      const fs = require("node:fs");
+      if (!fs.existsSync(process.env.LYJ_REGISTRATION_MARKER)) process.exit(7);
+      fs.writeFileSync(process.env.LYJ_SYNC_MARKER, process.argv.slice(2).join("|"));
+    `);
+    await writeFile(wrapper, `
+      param([string]$Installer, [string]$ProjectRoot, [string]$NodePath, [string]$EntryPath)
+      function New-ScheduledTaskAction { param($Execute, $Argument, $WorkingDirectory) return [pscustomobject]@{} }
+      function New-ScheduledTaskTrigger { param([switch]$Weekly, $WeeksInterval, $DaysOfWeek, $At) return [pscustomobject]@{} }
+      function New-ScheduledTaskPrincipal { param($UserId, $LogonType, $RunLevel) return [pscustomobject]@{} }
+      function Register-ScheduledTask {
+        param($TaskName, $TaskPath, $Action, $Trigger, $Principal, $Description, [switch]$Force)
+        Set-Content -LiteralPath $env:LYJ_REGISTRATION_MARKER -Value ($TaskPath + '|' + $TaskName)
+      }
+      & $Installer -ProjectRoot $ProjectRoot -NodePath $NodePath -ReminderEntryPath $EntryPath -LocalTime '10:15' -Confirm:$false
+    `);
+
+    const { stderr } = await execFileAsync("powershell", [
+      "-NoProfile", "-File", wrapper,
+      "-Installer", installer,
+      "-ProjectRoot", controlledRoot,
+      "-NodePath", process.execPath,
+      "-EntryPath", fakeEntry
+    ], { env: { ...process.env, LYJ_REGISTRATION_MARKER: registrationMarker, LYJ_SYNC_MARKER: synchronizationMarker } });
+
+    expect(stderr).toBe("");
+    expect((await readFile(registrationMarker, "utf8")).trim()).toBe("\\|LYJWorkBench-OutboundCheckin");
+    expect(await readFile(synchronizationMarker, "utf8")).toBe(
+      "--reminder|outbound-checkin|--scheduler-synchronized-time|10:15"
+    );
+  });
+
+  it("queries and unregisters only the exact root task identity in a controlled PowerShell session", async () => {
+    const uninstaller = resolve(process.cwd(), "../../scripts/uninstall-reminder-task.ps1");
+    const wrapper = join(tempDir, "controlled-uninstall.ps1");
+    const queryMarker = join(tempDir, "query.txt");
+    const removalMarker = join(tempDir, "removal.txt");
+    await writeFile(wrapper, `
+      param([string]$Uninstaller)
+      function Get-ScheduledTask {
+        param($TaskName, $TaskPath, $ErrorAction)
+        Set-Content -LiteralPath $env:LYJ_QUERY_MARKER -Value ($TaskPath + '|' + $TaskName)
+        return [pscustomobject]@{ TaskName = 'LYJWorkBench-OutboundCheckin'; TaskPath = '\\' }
+      }
+      function Unregister-ScheduledTask {
+        param($TaskName, $TaskPath, $Confirm)
+        Set-Content -LiteralPath $env:LYJ_REMOVAL_MARKER -Value ($TaskPath + '|' + $TaskName)
+      }
+      & $Uninstaller -WhatIf -Confirm:$false
+      if (Test-Path -LiteralPath $env:LYJ_REMOVAL_MARKER) { throw 'WhatIf performed a removal.' }
+      & $Uninstaller -Confirm:$false
+    `);
+
+    const { stderr } = await execFileAsync("powershell", ["-NoProfile", "-File", wrapper, "-Uninstaller", uninstaller], {
+      env: { ...process.env, LYJ_QUERY_MARKER: queryMarker, LYJ_REMOVAL_MARKER: removalMarker }
+    });
+
+    expect(stderr).toBe("");
+    expect((await readFile(queryMarker, "utf8")).trim()).toBe("\\|LYJWorkBench-OutboundCheckin");
+    expect((await readFile(removalMarker, "utf8")).trim()).toBe("\\|LYJWorkBench-OutboundCheckin");
+  });
+
+  it("refuses a same-name task returned from outside the exact root path", async () => {
+    const uninstaller = resolve(process.cwd(), "../../scripts/uninstall-reminder-task.ps1");
+    const wrapper = join(tempDir, "foreign-task-uninstall.ps1");
+    const removalMarker = join(tempDir, "foreign-removal.txt");
+    await writeFile(wrapper, `
+      param([string]$Uninstaller)
+      function Get-ScheduledTask {
+        param($TaskName, $TaskPath, $ErrorAction)
+        return [pscustomobject]@{ TaskName = 'LYJWorkBench-OutboundCheckin'; TaskPath = '\\Foreign\\' }
+      }
+      function Unregister-ScheduledTask {
+        param($TaskName, $TaskPath, $Confirm)
+        Set-Content -LiteralPath $env:LYJ_REMOVAL_MARKER -Value 'removed'
+      }
+      & $Uninstaller -Confirm:$false
+    `);
+
+    await expect(execFileAsync("powershell", ["-NoProfile", "-File", wrapper, "-Uninstaller", uninstaller], {
+      env: { ...process.env, LYJ_REMOVAL_MARKER: removalMarker }
+    })).rejects.toMatchObject({ code: 1 });
+    await expect(readFile(removalMarker, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

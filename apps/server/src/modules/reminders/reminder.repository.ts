@@ -19,6 +19,10 @@ interface AttemptRow {
   error_category: ReminderFailureCategory | null;
 }
 
+interface SchedulerStateRow {
+  synchronized_local_time: string;
+}
+
 interface ChinaParts {
   year: number;
   month: number;
@@ -90,6 +94,10 @@ export class ReminderRepository {
     if (!row) throw new Error("Reminder not found");
     const lastSuccess = this.latestAttempt(id, "success");
     const lastFailure = this.latestAttempt(id, "failure");
+    const schedulerState = this.database.prepare(`
+      SELECT synchronized_local_time FROM reminder_scheduler_state WHERE reminder_id = ?
+    `).get(id) as SchedulerStateRow | undefined;
+    const schedulerReinstallInstruction = `powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime ${row.local_time}`;
     return ReminderSchema.parse({
       id: row.id,
       enabled: Boolean(row.enabled),
@@ -99,6 +107,8 @@ export class ReminderRepository {
       subject: row.subject,
       body: row.body,
       nextRun: row.enabled ? nextRun(now, row.weekday, row.local_time) : null,
+      schedulerReinstallRequired: schedulerState?.synchronized_local_time !== row.local_time,
+      schedulerReinstallInstruction,
       lastSuccess: mapAttempt(lastSuccess, false),
       lastFailure: mapAttempt(lastFailure, true)
     });
@@ -121,8 +131,46 @@ export class ReminderRepository {
     return Boolean(row);
   }
 
-  public recordSuccess(id: ReminderId, localDate: string, attemptedAt: Date): void {
-    const save = this.database.transaction(() => {
+  public markSchedulerSynchronized(id: ReminderId, localTime: string, synchronizedAt: Date): void {
+    this.database.prepare(`
+      INSERT INTO reminder_scheduler_state (reminder_id, synchronized_local_time, synchronized_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(reminder_id) DO UPDATE SET
+        synchronized_local_time = excluded.synchronized_local_time,
+        synchronized_at = excluded.synchronized_at
+    `).run(id, localTime, synchronizedAt.toISOString());
+  }
+
+  public acquireDeliveryClaim(
+    id: ReminderId,
+    localDate: string,
+    token: string,
+    claimedAt: Date,
+    expiresAt: Date
+  ): boolean {
+    const acquire = this.database.transaction(() => {
+      if (this.wasDelivered(id, localDate)) return false;
+      const result = this.database.prepare(`
+        INSERT INTO reminder_delivery_claims (reminder_id, local_date, claim_token, claimed_at, claim_expires_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(reminder_id, local_date) DO UPDATE SET
+          claim_token = excluded.claim_token,
+          claimed_at = excluded.claimed_at,
+          claim_expires_at = excluded.claim_expires_at
+        WHERE reminder_delivery_claims.claim_expires_at <= excluded.claimed_at
+      `).run(id, localDate, token, claimedAt.toISOString(), expiresAt.toISOString());
+      return result.changes === 1;
+    });
+    return acquire.immediate();
+  }
+
+  public completeDeliverySuccess(id: ReminderId, localDate: string, token: string, attemptedAt: Date): boolean {
+    const complete = this.database.transaction(() => {
+      const released = this.database.prepare(`
+        DELETE FROM reminder_delivery_claims
+        WHERE reminder_id = ? AND local_date = ? AND claim_token = ?
+      `).run(id, localDate, token);
+      if (released.changes !== 1) return false;
       this.database.prepare(`
         INSERT INTO reminder_delivery_attempts (reminder_id, local_date, status, error_category, attempted_at)
         VALUES (?, ?, 'success', NULL, ?)
@@ -132,12 +180,24 @@ export class ReminderRepository {
       this.database.prepare(`
         UPDATE reminders SET last_delivered_on = ?, last_failure_category = NULL, updated_at = ? WHERE id = ?
       `).run(localDate, attemptedAt.toISOString(), id);
+      return true;
     });
-    save();
+    return complete.immediate();
   }
 
-  public recordFailure(id: ReminderId, localDate: string, category: ReminderFailureCategory, attemptedAt: Date): void {
-    const save = this.database.transaction(() => {
+  public completeDeliveryFailure(
+    id: ReminderId,
+    localDate: string,
+    token: string,
+    category: ReminderFailureCategory,
+    attemptedAt: Date
+  ): boolean {
+    const complete = this.database.transaction(() => {
+      const released = this.database.prepare(`
+        DELETE FROM reminder_delivery_claims
+        WHERE reminder_id = ? AND local_date = ? AND claim_token = ?
+      `).run(id, localDate, token);
+      if (released.changes !== 1) return false;
       this.database.prepare(`
         INSERT INTO reminder_delivery_attempts (reminder_id, local_date, status, error_category, attempted_at)
         VALUES (?, ?, 'failure', ?, ?)
@@ -148,8 +208,9 @@ export class ReminderRepository {
       this.database.prepare(`
         UPDATE reminders SET last_failure_category = ?, updated_at = ? WHERE id = ?
       `).run(category, attemptedAt.toISOString(), id);
+      return true;
     });
-    save();
+    return complete.immediate();
   }
 
   private latestAttempt(id: ReminderId, status: "success" | "failure"): AttemptRow | undefined {

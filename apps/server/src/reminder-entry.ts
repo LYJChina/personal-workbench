@@ -12,13 +12,35 @@ export function parseReminderArguments(arguments_: string[]): "outbound-checkin"
   throw new Error("Invalid reminder arguments");
 }
 
+export function applySchedulerSynchronizationArguments(
+  arguments_: string[],
+  repository: ReminderRepository,
+  synchronizedAt: Date
+): true {
+  if (
+    arguments_.length !== 4
+    || arguments_[0] !== "--reminder"
+    || arguments_[1] !== "outbound-checkin"
+    || arguments_[2] !== "--scheduler-synchronized-time"
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(arguments_[3])
+  ) throw new Error("Invalid scheduler synchronization arguments");
+  repository.markSchedulerSynchronized("outbound-checkin", arguments_[3], synchronizedAt);
+  return true;
+}
+
 export async function runReminderEntry(arguments_: string[]): Promise<number> {
   try {
-    parseReminderArguments(arguments_);
+    const schedulerSynchronization = arguments_.length === 4 && arguments_[2] === "--scheduler-synchronized-time";
+    if (!schedulerSynchronization) parseReminderArguments(arguments_);
     const paths = resolveAppPaths();
     const database = openDatabase(paths);
     try {
       const repository = new ReminderRepository(database);
+      if (schedulerSynchronization) {
+        applySchedulerSynchronizationArguments(arguments_, repository, new Date());
+        console.log("Scheduler synchronization recorded");
+        return 0;
+      }
       const settingsRepository = new SettingsRepository(database);
       const channel = new EmailNotificationChannel({
         secretStore: new WindowsDpapiSecretStore(paths.secretsDir),

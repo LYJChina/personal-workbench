@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ReminderFailureCategory } from "@workbench/contracts";
 import type { NotificationChannel } from "./notification-channel.js";
 import { chinaLocalDate, chinaParts, type ReminderRepository } from "./reminder.repository.js";
@@ -11,6 +12,8 @@ export interface ReminderRunSummary {
 export interface ReminderRunnerDependencies {
   repository: ReminderRepository;
   channel: NotificationChannel;
+  claimToken?: () => string;
+  claimLeaseMs?: number;
 }
 
 function isDue(now: Date, weekday: number, localTime: string): boolean {
@@ -27,6 +30,10 @@ export async function runDueReminders(now: Date, dependencies: ReminderRunnerDep
     return summary;
   }
 
+  const token = (dependencies.claimToken ?? randomUUID)();
+  const leaseExpiresAt = new Date(now.getTime() + (dependencies.claimLeaseMs ?? 5 * 60_000));
+  if (!dependencies.repository.acquireDeliveryClaim(reminder.id, localDate, token, now, leaseExpiresAt)) return summary;
+
   let result;
   try {
     result = await dependencies.channel.send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body });
@@ -34,10 +41,10 @@ export async function runDueReminders(now: Date, dependencies: ReminderRunnerDep
     result = { status: "failure" as const, category: "unknown" as ReminderFailureCategory };
   }
   if (result.status === "success") {
-    dependencies.repository.recordSuccess(reminder.id, localDate, now);
-    summary.sent = 1;
+    if (dependencies.repository.completeDeliverySuccess(reminder.id, localDate, token, now)) summary.sent = 1;
+    else summary.failed = 1;
   } else {
-    dependencies.repository.recordFailure(reminder.id, localDate, result.category, now);
+    dependencies.repository.completeDeliveryFailure(reminder.id, localDate, token, result.category, now);
     summary.failed = 1;
   }
   return summary;
