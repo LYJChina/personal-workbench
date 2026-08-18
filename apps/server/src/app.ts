@@ -11,6 +11,8 @@ import { createReminderRouter } from "./modules/reminders/reminder.routes.js";
 import type { NotificationChannel } from "./modules/reminders/notification-channel.js";
 import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";
 import { AiPolishClient, type AiPolishGenerator } from "./modules/ai-polish/ai-polish.client.js";
+import { createHolidayRouter } from "./modules/calendar/holiday.routes.js";
+import type { HolidayYearLoader } from "./modules/calendar/holiday.client.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -22,6 +24,7 @@ export interface CreateAppOptions {
   deepSeekClient?: DailyReportGenerator;
   aiPolishClient?: AiPolishGenerator;
   reminderChannel?: NotificationChannel;
+  holidayYearLoader?: HolidayYearLoader;
   now?: () => Date;
   webDistDir?: string;
   instanceToken?: string;
@@ -60,6 +63,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     channel: options.reminderChannel,
     now: options.now
   }));
+  app.use("/api", createHolidayRouter(paths, { loader: options.holidayYearLoader, now: options.now }));
   app.use("/api", createSettingsRouter(paths, {
     secretStore,
     allowLoopbackHttp: options.allowLoopbackHttp,
