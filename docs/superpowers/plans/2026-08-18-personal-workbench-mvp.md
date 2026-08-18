@@ -644,3 +644,19 @@ Append the exact verification date, command results, and any deliberately skippe
 git add scripts/start-local.ps1 apps/server apps/web package.json README.md docs/superpowers/plans/2026-08-18-personal-workbench-mvp.md
 git commit -m "feat: complete local personal workbench mvp"
 ```
+
+## Execution Evidence
+
+Verification date: 2026-08-18 (Asia/Shanghai).
+
+- Baseline before Task 7: `pnpm test` passed with 102 server tests and 37 web tests.
+- Required RED: `pnpm --filter @workbench/server test -- security-boundaries.test.ts` failed 18/18 for missing host/port validation, static hosting, sanitized logging, and launcher behavior. `pnpm --filter @workbench/web test -- App.integration.test.tsx` failed 1/1 on the Daily Report card's non-concise accessible link name.
+- Additional smoke regressions were captured RED before fixes: a dot-directory web build fixture returned 500 instead of the SPA document, and abrupt launcher termination left its controlled child alive.
+- Focused GREEN: `security-boundaries.test.ts` passed 20/20, including success, health-failure cleanup, abrupt-launcher cleanup, environment sanitization, static/API routing, and error redaction; `App.integration.test.tsx` passed 1/1 across Home → AI Office → Daily Report → Settings → Reminders.
+- `pnpm test`: passed; server 122/122 and web 38/38 (160 tests total; contracts intentionally has no test files).
+- `pnpm build`: passed; server TypeScript emitted successfully and Vite built 84 modules into `apps/web/dist`.
+- `pnpm check`: passed for contracts, server, and web.
+- `powershell -NoProfile -File scripts/install-reminder-task.ps1 -WhatIf`: passed and described exactly one `LYJWorkBench-OutboundCheckin` registration for Monday 09:00; no scheduled task was installed or changed.
+- `pnpm local:start -- -NoOpen`: health-gated startup succeeded on `127.0.0.1:3001`; `/api/health` returned 200 JSON, `/ai-office/daily-report` returned 200 HTML through the SPA fallback, and `/api/does-not-exist` returned 404 JSON. After terminating the launcher, no listener remained on the exact port.
+- `git diff --check`: passed. Secret-sentinel scanning found sentinel values only in deliberate negative test fixtures and none in production source, scripts, or documentation.
+- No browser was opened during automated verification. Real DeepSeek generation/connection, real SMTP connection/delivery, a real Task Scheduler installation, and cross-account DPAPI migration were deliberately skipped because no user credentials or external-effect authorization were provided. No success is claimed for those checks.

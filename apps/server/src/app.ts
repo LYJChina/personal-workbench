@@ -20,6 +20,7 @@ export interface CreateAppOptions {
   deepSeekClient?: DailyReportGenerator;
   reminderChannel?: NotificationChannel;
   now?: () => Date;
+  webDistDir?: string;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -54,6 +55,23 @@ export function createApp(options: CreateAppOptions = {}): Express {
     connectionTimeoutMs: options.connectionTimeoutMs
   }));
 
+  app.use("/api", (_request, response) => {
+    response.status(404).json({ error: { message: "Not Found", code: "NOT_FOUND" } });
+  });
+
+  if (options.webDistDir) {
+    app.use(express.static(options.webDistDir));
+    app.use((request, response, next) => {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        next();
+        return;
+      }
+      response.sendFile("index.html", { root: options.webDistDir, dotfiles: "deny" }, (error) => {
+        if (error) next(error);
+      });
+    });
+  }
+
   app.use((_request, response) => {
     response.status(404).json({ error: { message: "Not Found", code: "NOT_FOUND" } });
   });
@@ -63,7 +81,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       response.status(413).json({ error: { message: "Profile photo must be 5 MB or smaller", code: "PAYLOAD_TOO_LARGE" } });
       return;
     }
-    console.error(error instanceof Error ? error.message : "Unhandled server error");
+    console.error("Unhandled server error");
     response.status(500).json({ error: { message: "Internal Server Error", code: "INTERNAL_ERROR" } });
   });
 
