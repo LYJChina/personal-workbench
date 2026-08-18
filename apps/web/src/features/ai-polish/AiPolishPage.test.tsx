@@ -31,14 +31,15 @@ describe("AI polish workspace", () => {
     expect(screen.getByRole("region", { name: "历史记录" }).parentElement).toBe(container.querySelector(".ai-polish-workspace"));
   });
 
-  it("puts translation first, supports both directions, and drafts a custom system prompt", async () => {
+  it("puts translation first and moves prompt drafting into its own tool card", async () => {
     const user = userEvent.setup();
     const polishApi = createApi();
     render(<MemoryRouter><AiPolishPage api={polishApi} /></MemoryRouter>);
 
     const tools = within(screen.getByRole("navigation", { name: "润色场景" })).getAllByRole("link");
-    expect(tools.map((link) => link.textContent)).toEqual(expect.arrayContaining([expect.stringMatching(/^翻译/), expect.stringMatching(/^自定义/)]));
+    expect(tools).toHaveLength(6);
     expect(tools[0]).toHaveTextContent("翻译");
+    expect(tools[5]).toHaveTextContent("提示词生成");
     expect(screen.getAllByRole("link", { name: /日报填写/ })[0]).toHaveAttribute("aria-current", "page");
     expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("工作日报");
     await user.click(screen.getAllByRole("link", { name: /给领导的话/ })[0]);
@@ -51,11 +52,17 @@ describe("AI polish workspace", () => {
     await user.click(screen.getAllByRole("link", { name: /普通润色/ })[0]);
     expect(screen.getByLabelText("待润色原文")).toBeVisible();
     await user.click(screen.getAllByRole("link", { name: /自定义/ })[0]);
+    expect(screen.queryByLabelText("提示词生成需求")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("系统提示词")).toBeVisible();
+    await user.click(screen.getByRole("link", { name: /提示词生成/ }));
     await user.type(screen.getByLabelText("提示词生成需求"), "把会议记录整理成行动项");
     await user.click(screen.getByRole("button", { name: "自动生成提示词" }));
     await waitFor(() => expect(polishApi.generateAiSystemPrompt).toHaveBeenCalledWith({ goal: "把会议记录整理成行动项" }));
-    expect(screen.getByLabelText("系统提示词")).toHaveValue("自动生成的系统提示词");
+    expect(screen.getByLabelText("生成的系统提示词")).toHaveValue("自动生成的系统提示词");
     expect(screen.getByText(/系统提示词已生成/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "应用到自定义" }));
+    expect(screen.getByLabelText("系统提示词")).toHaveValue("自动生成的系统提示词");
+    expect(screen.getByRole("link", { name: /自定义/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("generates with the visible prompt and filters history by card", async () => {

@@ -19,7 +19,9 @@ function isKind(value: string | null): value is AiPolishKind {
 
 export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishApi }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedKind = isKind(searchParams.get("mode")) ? searchParams.get("mode") as AiPolishKind : "daily_report";
+  const requestedMode = searchParams.get("mode");
+  const promptBuilderSelected = requestedMode === "prompt_builder";
+  const selectedKind = isKind(requestedMode) ? requestedMode : "daily_report";
   const preset = presetFor(selectedKind);
   const [primaryText, setPrimaryText] = useState("");
   const [secondaryText, setSecondaryText] = useState(preset.defaultSecondary);
@@ -31,6 +33,7 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
   const [error, setError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [promptGoal, setPromptGoal] = useState("");
+  const [generatedPrompt, setGeneratedPrompt] = useState("");
   const [promptGenerating, setPromptGenerating] = useState(false);
   const [promptFeedback, setPromptFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
@@ -48,8 +51,18 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
     setError(null);
     setCopyFeedback(null);
     setPromptGoal("");
+    setGeneratedPrompt("");
     setPromptFeedback(null);
     setHistoryKind(kind);
+  }
+
+  function selectPromptBuilder() {
+    setSearchParams({ mode: "prompt_builder" });
+    setPromptGoal("");
+    setGeneratedPrompt("");
+    setPromptFeedback(null);
+    setError(null);
+    setCopyFeedback(null);
   }
 
   async function generateSystemPrompt() {
@@ -58,13 +71,36 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
     setPromptFeedback(null);
     try {
       const generated = await polishApi.generateAiSystemPrompt({ goal: promptGoal });
-      setSystemPrompt(generated.prompt);
+      setGeneratedPrompt(generated.prompt);
       setPromptFeedback({ kind: "success", message: `系统提示词已生成，可继续修改（${generated.model}）` });
     } catch (reason) {
       setPromptFeedback({ kind: "error", message: reason instanceof Error ? reason.message : "系统提示词生成失败，请稍后重试" });
     } finally {
       setPromptGenerating(false);
     }
+  }
+
+  async function copyGeneratedPrompt() {
+    if (!generatedPrompt.trim()) return;
+    try {
+      await navigator.clipboard.writeText(generatedPrompt);
+      setPromptFeedback({ kind: "success", message: "系统提示词已复制" });
+    } catch {
+      setPromptFeedback({ kind: "error", message: "复制失败，请手动选择提示词" });
+    }
+  }
+
+  function applyPromptToCustom() {
+    const custom = presetFor("custom");
+    setSearchParams({ mode: "custom" });
+    setPrimaryText("");
+    setSecondaryText(custom.defaultSecondary);
+    setSystemPrompt(generatedPrompt);
+    setResult(null);
+    setError(null);
+    setCopyFeedback(null);
+    setPromptFeedback(null);
+    setHistoryKind("custom");
   }
 
   async function generate(event: FormEvent<HTMLFormElement>) {
@@ -106,16 +142,20 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
     <h2 className="sr-only">AI 润色</h2>
 
     <nav className="polish-mode-grid" aria-label="润色场景">
-      {polishPresets.map((item) => <Link aria-current={selectedKind === item.kind ? "page" : undefined} className={`polish-mode-card ${selectedKind === item.kind ? "active" : ""}`} to={`?mode=${item.kind}`} key={item.kind} onClick={(event) => { event.preventDefault(); selectKind(item.kind); }}><span className="tool-icon"><Icon name={item.icon} /></span><span><strong>{item.title}</strong><small>{item.description}</small></span><Icon name="arrow" size={16} className="mode-arrow" /></Link>)}
+      {polishPresets.map((item) => <Link aria-current={!promptBuilderSelected && selectedKind === item.kind ? "page" : undefined} className={`polish-mode-card ${!promptBuilderSelected && selectedKind === item.kind ? "active" : ""}`} to={`?mode=${item.kind}`} key={item.kind} onClick={(event) => { event.preventDefault(); selectKind(item.kind); }}><span className="tool-icon"><Icon name={item.icon} /></span><span><strong>{item.title}</strong><small>{item.description}</small></span><Icon name="arrow" size={16} className="mode-arrow" /></Link>)}
+      <Link aria-current={promptBuilderSelected ? "page" : undefined} className={`polish-mode-card ${promptBuilderSelected ? "active" : ""}`} to="?mode=prompt_builder" onClick={(event) => { event.preventDefault(); selectPromptBuilder(); }}><span className="tool-icon"><Icon name="sparkles" /></span><span><strong>提示词生成</strong><small>单独创建系统提示词</small></span><Icon name="arrow" size={16} className="mode-arrow" /></Link>
     </nav>
 
-    <div className="ai-polish-workspace">
+    {promptBuilderSelected ? <div className="prompt-builder-workspace">
+      <section className="prompt-builder-card" aria-labelledby="prompt-builder-input-heading"><div className="card-heading"><div className="card-icon"><Icon name="sparkles" /></div><div><span className="step-label">描述任务</span><h3 id="prompt-builder-input-heading">提示词需求</h3></div></div><p>说明 AI 要完成的工作、输入内容、输出格式和必须遵守的限制。</p><label>你希望 AI 做什么<textarea aria-label="提示词生成需求" placeholder="例如：把会议记录整理成包含负责人和截止日期的行动项，不要补充原文没有的信息。" value={promptGoal} onChange={(event) => setPromptGoal(event.target.value)} rows={8} /></label><button className="button-primary" type="button" disabled={promptGenerating || promptGoal.trim().length < 5} onClick={() => void generateSystemPrompt()}>{promptGenerating ? <><span className="spinner" />生成提示词中…</> : <><Icon name="sparkles" size={17} />自动生成提示词</>}</button></section>
+      <section className="prompt-builder-card" aria-labelledby="prompt-builder-result-heading"><div className="card-heading"><div className="card-icon accent"><Icon name="file" /></div><div><span className="step-label">生成结果</span><h3 id="prompt-builder-result-heading">系统提示词</h3></div></div><p>生成后可以继续修改、复制，或直接带到自定义工具中使用。</p><label>生成的系统提示词<textarea aria-label="生成的系统提示词" placeholder="生成的系统提示词会显示在这里…" value={generatedPrompt} onChange={(event) => setGeneratedPrompt(event.target.value)} rows={12} /></label><div className="prompt-builder-actions"><button className="button-secondary" type="button" disabled={!generatedPrompt.trim()} onClick={() => void copyGeneratedPrompt()}><Icon name="copy" size={17} />复制提示词</button><button className="button-primary" type="button" disabled={!generatedPrompt.trim()} onClick={applyPromptToCustom}><Icon name="arrow" size={17} />应用到自定义</button></div>{promptFeedback && <p className={`prompt-feedback ${promptFeedback.kind}`} role={promptFeedback.kind === "error" ? "alert" : "status"}>{promptFeedback.message}</p>}</section>
+    </div> : <div className="ai-polish-workspace">
       <div className="daily-report-workspace">
         <form className="daily-report-input" onSubmit={generate}>
           <div className="card-heading"><div className="card-icon"><Icon name={preset.icon} /></div><div><span className="step-label">当前场景</span><h3>{preset.title}</h3></div></div>
           <label><span>{preset.primaryLabel}<small>{preset.primaryHint}</small></span><textarea aria-label={preset.primaryLabel} placeholder={preset.primaryPlaceholder} value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} rows={4} /></label>
           <label><span>{preset.secondaryLabel}<small>{preset.secondaryHint}</small></span>{selectedKind === "translation" ? <select aria-label="翻译方向" value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)}><option value="中文 → 英文">中文 → 英文</option><option value="英文 → 中文">英文 → 中文</option></select> : <textarea aria-label={preset.secondaryLabel} placeholder={preset.secondaryPlaceholder} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={3} />}</label>
-          <details className="prompt-editor" open><summary>查看和修改提示词</summary>{selectedKind === "custom" && <section className="prompt-generator" aria-labelledby="prompt-generator-heading"><div><strong id="prompt-generator-heading">AI 生成系统提示词</strong><small>描述任务，DeepSeek 会先起草一份可继续编辑的提示词。</small></div><label>提示词需求<textarea aria-label="提示词生成需求" placeholder="例如：把会议记录整理成包含负责人和截止日期的行动项，不要补充原文没有的信息。" value={promptGoal} onChange={(event) => setPromptGoal(event.target.value)} rows={3} /></label><button className="button-secondary" type="button" disabled={promptGenerating || promptGoal.trim().length < 5} onClick={() => void generateSystemPrompt()}>{promptGenerating ? <><span className="spinner" />生成提示词中…</> : <><Icon name="sparkles" size={17} />自动生成提示词</>}</button>{promptFeedback && <p className={`prompt-feedback ${promptFeedback.kind}`} role={promptFeedback.kind === "error" ? "alert" : "status"}>{promptFeedback.message}</p>}</section>}<label>系统提示词<textarea aria-label="系统提示词" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={4} /></label><button className="button-ghost compact" type="button" onClick={() => setSystemPrompt(preset.systemPrompt)}>恢复此场景默认提示词</button></details>
+          <details className="prompt-editor" open><summary>查看和修改提示词</summary><label>系统提示词<textarea aria-label="系统提示词" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={4} /></label><button className="button-ghost compact" type="button" onClick={() => setSystemPrompt(preset.systemPrompt)}>恢复此场景默认提示词</button></details>
           <button className="button-primary generate-button" type="submit" disabled={submitting || !systemPrompt.trim() || (!primaryText.trim() && !secondaryText.trim())}>{submitting ? <><span className="spinner" />生成中…</> : <><Icon name="sparkles" size={18} />{preset.actionLabel}</>}</button>
           {error && <div role="alert">{error} {error.includes("配置") && <Link to="/settings">前往设置</Link>}</div>}
         </form>
@@ -124,6 +164,6 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
       </div>
 
       <AiPolishHistory records={records} selectedKind={historyKind} onSelectKind={setHistoryKind} onReopen={setResult} onSave={saveHistory} />
-    </div>
+    </div>}
   </section>;
 }
