@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { AiPolishInput, AiPolishKind, AiPolishRecord } from "@workbench/contracts";
+import type { AiPolishInput, AiPolishKind, AiPolishRecord, AiSystemPromptInput, AiSystemPromptResult } from "@workbench/contracts";
 import { Icon } from "../../app/Icon";
 import { api as defaultApi } from "../../lib/api";
 import { AiPolishHistory } from "./AiPolishHistory";
@@ -8,6 +8,7 @@ import { polishPresets, presetFor } from "./polishPresets";
 
 export interface AiPolishApi {
   generateAiPolish(input: AiPolishInput): Promise<AiPolishRecord>;
+  generateAiSystemPrompt(input: AiSystemPromptInput): Promise<AiSystemPromptResult>;
   getAiPolishHistory(): Promise<AiPolishRecord[]>;
   updateAiPolish(id: number, content: string): Promise<AiPolishRecord>;
 }
@@ -29,6 +30,9 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [promptGoal, setPromptGoal] = useState("");
+  const [promptGenerating, setPromptGenerating] = useState(false);
+  const [promptFeedback, setPromptFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   const refreshHistory = useCallback(async () => setRecords(await polishApi.getAiPolishHistory()), [polishApi]);
 
@@ -43,7 +47,24 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
     setResult(null);
     setError(null);
     setCopyFeedback(null);
+    setPromptGoal("");
+    setPromptFeedback(null);
     setHistoryKind(kind);
+  }
+
+  async function generateSystemPrompt() {
+    if (promptGenerating || promptGoal.trim().length < 5) return;
+    setPromptGenerating(true);
+    setPromptFeedback(null);
+    try {
+      const generated = await polishApi.generateAiSystemPrompt({ goal: promptGoal });
+      setSystemPrompt(generated.prompt);
+      setPromptFeedback({ kind: "success", message: `系统提示词已生成，可继续修改（${generated.model}）` });
+    } catch (reason) {
+      setPromptFeedback({ kind: "error", message: reason instanceof Error ? reason.message : "系统提示词生成失败，请稍后重试" });
+    } finally {
+      setPromptGenerating(false);
+    }
   }
 
   async function generate(event: FormEvent<HTMLFormElement>) {
@@ -93,8 +114,8 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
         <form className="daily-report-input" onSubmit={generate}>
           <div className="card-heading"><div className="card-icon"><Icon name={preset.icon} /></div><div><span className="step-label">当前场景</span><h3>{preset.title}</h3></div></div>
           <label><span>{preset.primaryLabel}<small>{preset.primaryHint}</small></span><textarea aria-label={preset.primaryLabel} placeholder={preset.primaryPlaceholder} value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} rows={4} /></label>
-          <label><span>{preset.secondaryLabel}<small>{preset.secondaryHint}</small></span><textarea aria-label={preset.secondaryLabel} placeholder={preset.secondaryPlaceholder} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={3} /></label>
-          <details className="prompt-editor" open><summary>查看和修改提示词</summary><label>系统提示词<textarea aria-label="系统提示词" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={4} /></label><button className="button-ghost compact" type="button" onClick={() => setSystemPrompt(preset.systemPrompt)}>恢复此场景默认提示词</button></details>
+          <label><span>{preset.secondaryLabel}<small>{preset.secondaryHint}</small></span>{selectedKind === "translation" ? <select aria-label="翻译方向" value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)}><option value="中文 → 英文">中文 → 英文</option><option value="英文 → 中文">英文 → 中文</option></select> : <textarea aria-label={preset.secondaryLabel} placeholder={preset.secondaryPlaceholder} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={3} />}</label>
+          <details className="prompt-editor" open><summary>查看和修改提示词</summary>{selectedKind === "custom" && <section className="prompt-generator" aria-labelledby="prompt-generator-heading"><div><strong id="prompt-generator-heading">AI 生成系统提示词</strong><small>描述任务，DeepSeek 会先起草一份可继续编辑的提示词。</small></div><label>提示词需求<textarea aria-label="提示词生成需求" placeholder="例如：把会议记录整理成包含负责人和截止日期的行动项，不要补充原文没有的信息。" value={promptGoal} onChange={(event) => setPromptGoal(event.target.value)} rows={3} /></label><button className="button-secondary" type="button" disabled={promptGenerating || promptGoal.trim().length < 5} onClick={() => void generateSystemPrompt()}>{promptGenerating ? <><span className="spinner" />生成提示词中…</> : <><Icon name="sparkles" size={17} />自动生成提示词</>}</button>{promptFeedback && <p className={`prompt-feedback ${promptFeedback.kind}`} role={promptFeedback.kind === "error" ? "alert" : "status"}>{promptFeedback.message}</p>}</section>}<label>系统提示词<textarea aria-label="系统提示词" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={4} /></label><button className="button-ghost compact" type="button" onClick={() => setSystemPrompt(preset.systemPrompt)}>恢复此场景默认提示词</button></details>
           <button className="button-primary generate-button" type="submit" disabled={submitting || !systemPrompt.trim() || (!primaryText.trim() && !secondaryText.trim())}>{submitting ? <><span className="spinner" />生成中…</> : <><Icon name="sparkles" size={18} />{preset.actionLabel}</>}</button>
           {error && <div role="alert">{error} {error.includes("配置") && <Link to="/settings">前往设置</Link>}</div>}
         </form>

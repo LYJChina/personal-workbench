@@ -1,6 +1,7 @@
-import type { AiPolishInput } from "@workbench/contracts";
-import { buildAiPolishMessages } from "./ai-polish.prompt.js";
+import type { AiPolishInput, AiSystemPromptInput } from "@workbench/contracts";
+import { buildAiPolishMessages, buildSystemPromptMessages } from "./ai-polish.prompt.js";
 import { DeepSeekClientError } from "../daily-reports/deepseek.client.js";
+import type { ChatMessage } from "../daily-reports/daily-report.prompt.js";
 
 export interface AiPolishGenerationInput extends AiPolishInput {
   baseUrl: string;
@@ -8,8 +9,15 @@ export interface AiPolishGenerationInput extends AiPolishInput {
   apiKey: string;
 }
 
+export interface AiSystemPromptGenerationInput extends AiSystemPromptInput {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
 export interface AiPolishGenerator {
   generatePolish(input: AiPolishGenerationInput): Promise<{ content: string; model: string }>;
+  generateSystemPrompt(input: AiSystemPromptGenerationInput): Promise<{ prompt: string; model: string }>;
 }
 
 interface ChatCompletionResponse {
@@ -21,13 +29,23 @@ export class AiPolishClient implements AiPolishGenerator {
   public constructor(private readonly fetchImplementation: typeof fetch = fetch) {}
 
   public async generatePolish(input: AiPolishGenerationInput): Promise<{ content: string; model: string }> {
+    const generated = await this.complete(input, buildAiPolishMessages(input), 0.2);
+    return { content: generated.content, model: generated.model };
+  }
+
+  public async generateSystemPrompt(input: AiSystemPromptGenerationInput): Promise<{ prompt: string; model: string }> {
+    const generated = await this.complete(input, buildSystemPromptMessages(input.goal), 0.3);
+    return { prompt: generated.content, model: generated.model };
+  }
+
+  private async complete(input: { baseUrl: string; model: string; apiKey: string }, messages: ChatMessage[], temperature: number): Promise<{ content: string; model: string }> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const response = await this.fetchImplementation(`${input.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${input.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: input.model, messages: buildAiPolishMessages(input), temperature: 0.2 }),
+        body: JSON.stringify({ model: input.model, messages, temperature }),
         signal: controller.signal,
         redirect: "manual"
       });

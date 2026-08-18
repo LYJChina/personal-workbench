@@ -7,7 +7,8 @@ const historyLabels: Record<AiPolishKind, string> = {
   daily_report: "历史日报",
   leadership: "历史给领导的话",
   translation: "历史翻译",
-  general: "历史普通润色"
+  general: "历史普通润色",
+  custom: "历史自定义"
 };
 
 export function AiPolishHistory({ records, selectedKind, onSelectKind, onReopen, onSave }: {

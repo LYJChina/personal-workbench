@@ -123,7 +123,7 @@ a.ai-tool-card:hover { border-color: var(--primary-color); box-shadow: var(--sha
 .ai-office-note strong { color: var(--heading-color); font-size: .73rem; }
 .ai-office-note small { margin-top: .1rem; font-size: .66rem; line-height: 1.45; }
 
-.polish-mode-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.polish-mode-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .65rem; }
 .polish-mode-card { min-width: 0; min-height: 5.5rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .8rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); color: var(--text-color); background: var(--surface-background); box-shadow: var(--shadow-sm); text-decoration: none; transition: border-color var(--transition), background var(--transition), box-shadow var(--transition); }
 .polish-mode-card:hover { border-color: var(--primary-color); }
 .polish-mode-card.active { border-color: var(--primary-color); background: var(--primary-soft); box-shadow: 0 0 0 3px var(--focus-ring); }
@@ -136,6 +136,14 @@ a.ai-tool-card:hover { border-color: var(--primary-color); box-shadow: var(--sha
 .prompt-editor summary { color: var(--heading-color); cursor: pointer; font-size: .8rem; font-weight: 750; }
 .prompt-editor[open] summary { margin-bottom: .65rem; }
 .prompt-editor textarea { background: var(--surface-background); font-size: .78rem; }
+.prompt-generator { display: grid; gap: .55rem; margin-bottom: .65rem; padding: .65rem; border: 1px solid var(--border-color); border-radius: calc(var(--control-radius) * .9); background: var(--surface-background); }
+.prompt-generator > div strong, .prompt-generator > div small { display: block; }
+.prompt-generator > div strong { color: var(--heading-color); font-size: .78rem; }
+.prompt-generator > div small { margin-top: .15rem; color: var(--muted-text-color); font-size: .68rem; line-height: 1.45; }
+.prompt-generator label { font-size: .73rem; }
+.prompt-generator .button-secondary { width: 100%; }
+.prompt-feedback { margin: 0; font-size: .7rem; }
+.prompt-feedback.success { color: var(--primary-soft-text); }
 .history-kind-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 .history-kind-tabs button { min-height: 2.5rem; padding: .5rem .85rem; color: var(--muted-text-color); border-color: var(--border-color); }
 .history-kind-tabs button.active { color: var(--primary-soft-text); border-color: var(--primary-color); background: var(--primary-soft); }
@@ -148,6 +156,7 @@ a.ai-tool-card:hover { border-color: var(--primary-color); box-shadow: var(--sha
 .ai-polish-page .prompt-editor { padding: .62rem; }
 .ai-polish-page .prompt-editor[open] summary { margin-bottom: .45rem; }
 .ai-polish-page .prompt-editor textarea { min-height: 5.25rem; }
+.ai-polish-page .prompt-generator textarea { min-height: 4.4rem; }
 .ai-polish-page .daily-report-result { min-width: 0; padding: 1rem; }
 .ai-polish-page .daily-report-result pre { min-height: 11rem; }
 .ai-polish-page .result-empty { min-height: 12rem; }

@@ -5,8 +5,8 @@ import request from "supertest";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
-import { buildAiPolishMessages } from "../src/modules/ai-polish/ai-polish.prompt";
-import type { AiPolishGenerationInput, AiPolishGenerator } from "../src/modules/ai-polish/ai-polish.client";
+import { buildAiPolishMessages, buildSystemPromptMessages } from "../src/modules/ai-polish/ai-polish.prompt";
+import type { AiPolishGenerationInput, AiPolishGenerator, AiSystemPromptGenerationInput } from "../src/modules/ai-polish/ai-polish.client";
 import type { SecretStore } from "../src/platform/dpapi";
 import { openDatabase } from "../src/db/database";
 import { resolveAppPaths } from "../src/config/paths";
@@ -19,9 +19,14 @@ class MemorySecretStore implements SecretStore {
 
 class StubPolishGenerator implements AiPolishGenerator {
   public readonly inputs: AiPolishGenerationInput[] = [];
+  public readonly promptInputs: AiSystemPromptGenerationInput[] = [];
   public async generatePolish(input: AiPolishGenerationInput) {
     this.inputs.push(input);
     return { content: `已处理：${input.primaryText}`, model: "deepseek-chat-actual" };
+  }
+  public async generateSystemPrompt(input: AiSystemPromptGenerationInput) {
+    this.promptInputs.push(input);
+    return { prompt: `自动提示词：${input.goal}`, model: "deepseek-chat-actual" };
   }
 }
 
@@ -33,6 +38,13 @@ describe("AI polish prompts", () => {
     expect(messages[1].content).toBe("采用简洁语气");
     expect(messages[2].content).toContain("沟通素材\n项目完成");
     expect(messages[2].content).toContain("希望领导关注\n请确认方案");
+  });
+
+  it("builds a dedicated system-prompt drafting request", () => {
+    const messages = buildSystemPromptMessages("把会议笔记整理成行动项");
+    expect(messages.map((message) => message.role)).toEqual(["system", "user"]);
+    expect(messages[0].content).toMatch(/角色、任务、输入边界/);
+    expect(messages[1].content).toContain("把会议笔记整理成行动项");
   });
 });
 
@@ -67,6 +79,18 @@ describe("AI polish API", () => {
     await request(app).post("/api/ai-polish/generate").send({ kind: "unknown", primaryText: "内容", secondaryText: "", systemPrompt: "提示词" }).expect(400);
     await request(app).post("/api/ai-polish/generate").send({ kind: "general", primaryText: "", secondaryText: "", systemPrompt: "提示词" }).expect(400);
     expect(generator.inputs).toEqual([]);
+  });
+
+  it("generates a custom system prompt without adding a history record", async () => {
+    const generator = new StubPolishGenerator();
+    const app = createApp({ dataDir, secretStore, aiPolishClient: generator });
+    await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
+
+    await request(app).post("/api/ai-polish/system-prompt").send({ goal: "把会议笔记整理成行动项" }).expect(200).expect((response) => {
+      expect(response.body).toEqual({ prompt: "自动提示词：把会议笔记整理成行动项", model: "deepseek-chat-actual" });
+    });
+    expect(generator.promptInputs[0]).toMatchObject({ goal: "把会议笔记整理成行动项", apiKey: "test-key" });
+    await request(app).get("/api/ai-polish").expect(200).expect([]);
   });
 
   it("upgrades an early AI history table and imports existing daily reports exactly once", () => {

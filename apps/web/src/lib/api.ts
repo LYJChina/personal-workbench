@@ -2,6 +2,8 @@ import type {
   ConnectionTestResult,
   AiPolishInput,
   AiPolishRecord,
+  AiSystemPromptInput,
+  AiSystemPromptResult,
   DashboardLayout,
   DailyReport,
   DailyReportInput,
@@ -84,6 +86,11 @@ export const api = {
     body: JSON.stringify({ content })
   }),
   generateAiPolish: (input: AiPolishInput) => requestJson<AiPolishRecord>("/ai-polish/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  }),
+  generateAiSystemPrompt: (input: AiSystemPromptInput) => requestJson<AiSystemPromptResult>("/ai-polish/system-prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)

@@ -14,6 +14,7 @@ const generated: AiPolishRecord = {
 function createApi(): AiPolishApi {
   return {
     generateAiPolish: vi.fn().mockResolvedValue(generated),
+    generateAiSystemPrompt: vi.fn().mockResolvedValue({ prompt: "自动生成的系统提示词", model: "deepseek-chat" }),
     getAiPolishHistory: vi.fn().mockResolvedValue([]),
     updateAiPolish: vi.fn().mockImplementation(async (id, content) => ({ ...generated, id, content }))
   };
@@ -30,19 +31,31 @@ describe("AI polish workspace", () => {
     expect(screen.getByRole("region", { name: "历史记录" }).parentElement).toBe(container.querySelector(".ai-polish-workspace"));
   });
 
-  it("switches among four deep-linkable scenarios and exposes editable preset prompts", async () => {
+  it("puts translation first, supports both directions, and drafts a custom system prompt", async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><AiPolishPage api={createApi()} /></MemoryRouter>);
+    const polishApi = createApi();
+    render(<MemoryRouter><AiPolishPage api={polishApi} /></MemoryRouter>);
 
+    const tools = within(screen.getByRole("navigation", { name: "润色场景" })).getAllByRole("link");
+    expect(tools.map((link) => link.textContent)).toEqual(expect.arrayContaining([expect.stringMatching(/^翻译/), expect.stringMatching(/^自定义/)]));
+    expect(tools[0]).toHaveTextContent("翻译");
     expect(screen.getAllByRole("link", { name: /日报填写/ })[0]).toHaveAttribute("aria-current", "page");
     expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("工作日报");
     await user.click(screen.getAllByRole("link", { name: /给领导的话/ })[0]);
     expect(screen.getByLabelText("沟通素材")).toBeVisible();
     expect(screen.getByLabelText<HTMLInputElement>("系统提示词").value).toContain("职场沟通");
     await user.click(screen.getAllByRole("link", { name: /^翻译/ })[0]);
-    expect(screen.getByLabelText("目标语言及要求")).toHaveValue("英语，正式自然的商务语气");
+    expect(screen.getByLabelText("翻译方向")).toHaveValue("中文 → 英文");
+    await user.selectOptions(screen.getByLabelText("翻译方向"), "英文 → 中文");
+    expect(screen.getByLabelText("翻译方向")).toHaveValue("英文 → 中文");
     await user.click(screen.getAllByRole("link", { name: /普通润色/ })[0]);
     expect(screen.getByLabelText("待润色原文")).toBeVisible();
+    await user.click(screen.getAllByRole("link", { name: /自定义/ })[0]);
+    await user.type(screen.getByLabelText("提示词生成需求"), "把会议记录整理成行动项");
+    await user.click(screen.getByRole("button", { name: "自动生成提示词" }));
+    await waitFor(() => expect(polishApi.generateAiSystemPrompt).toHaveBeenCalledWith({ goal: "把会议记录整理成行动项" }));
+    expect(screen.getByLabelText("系统提示词")).toHaveValue("自动生成的系统提示词");
+    expect(screen.getByText(/系统提示词已生成/)).toBeVisible();
   });
 
   it("generates with the visible prompt and filters history by card", async () => {

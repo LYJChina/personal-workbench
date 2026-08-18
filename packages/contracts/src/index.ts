@@ -118,7 +118,7 @@ export const DailyReportUpdateSchema = z.object({
   content: z.string().trim().min(1).max(50_000)
 });
 
-export const AiPolishKindSchema = z.enum(["daily_report", "leadership", "translation", "general"]);
+export const AiPolishKindSchema = z.enum(["daily_report", "leadership", "translation", "general", "custom"]);
 export const AiPolishInputSchema = z.object({
   kind: AiPolishKindSchema,
   primaryText: z.string().trim().max(20_000),
@@ -142,6 +142,15 @@ export const AiPolishRecordSchema = z.object({
 
 export const AiPolishUpdateSchema = z.object({
   content: z.string().trim().min(1).max(50_000)
+});
+
+export const AiSystemPromptInputSchema = z.object({
+  goal: z.string().trim().min(5).max(5_000)
+});
+
+export const AiSystemPromptResultSchema = z.object({
+  prompt: z.string().trim().min(1).max(10_000),
+  model: z.string().trim().min(1)
 });
 
 export const ReminderIdSchema = z.literal("outbound-checkin");
@@ -204,6 +213,8 @@ export type AiPolishKind = z.infer<typeof AiPolishKindSchema>;
 export type AiPolishInput = z.infer<typeof AiPolishInputSchema>;
 export type AiPolishRecord = z.infer<typeof AiPolishRecordSchema>;
 export type AiPolishUpdate = z.infer<typeof AiPolishUpdateSchema>;
+export type AiSystemPromptInput = z.infer<typeof AiSystemPromptInputSchema>;
+export type AiSystemPromptResult = z.infer<typeof AiSystemPromptResultSchema>;
 export type ReminderId = z.infer<typeof ReminderIdSchema>;
 export type ReminderUpdate = z.infer<typeof ReminderUpdateSchema>;
 export type ReminderFailureCategory = z.infer<typeof ReminderFailureCategorySchema>;

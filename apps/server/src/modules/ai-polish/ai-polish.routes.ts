@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { AiPolishInputSchema, AiPolishUpdateSchema } from "@workbench/contracts";
+import { AiPolishInputSchema, AiPolishUpdateSchema, AiSystemPromptInputSchema } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import type { SecretStore } from "../../platform/dpapi.js";
@@ -63,6 +63,22 @@ export function createAiPolishRouter(paths: AppPaths, dependencies: {
       return;
     }
     response.status(201).json(recordsFor(response).create(parsed.data, generated));
+  }));
+
+  router.post("/ai-polish/system-prompt", handle(async (request, response) => {
+    const parsed = AiSystemPromptInputSchema.safeParse(request.body);
+    if (!parsed.success) return errorResponse(response, 400, "System prompt validation failed", "VALIDATION_ERROR");
+    const apiKey = await dependencies.secretStore.readSecret(deepSeekSecretName);
+    const settings = settingsFor(response).getDeepSeekSettings(Boolean(apiKey));
+    if (!apiKey || !settings.model.trim() || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) {
+      return errorResponse(response, 409, "请先在设置中配置 DeepSeek", "DEEPSEEK_NOT_CONFIGURED");
+    }
+    try {
+      const generated = await dependencies.generator.generateSystemPrompt({ ...parsed.data, baseUrl: settings.baseUrl, model: settings.model, apiKey });
+      response.json(generated);
+    } catch (error) {
+      providerError(response, error);
+    }
   }));
 
   router.get("/ai-polish", (_request, response) => response.json(recordsFor(response).list()));
