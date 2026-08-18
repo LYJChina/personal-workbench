@@ -62,6 +62,13 @@ export function openDatabase(paths: AppPaths): Database.Database {
     migrationUrl = new URL("../../src/db/migrations/001_init.sql", import.meta.url);
   }
   database.exec(readFileSync(migrationUrl, "utf8"));
+  let genericMigrationUrl = new URL("./migrations/002_generic_reminders.sql", import.meta.url);
+  try {
+    readFileSync(genericMigrationUrl);
+  } catch {
+    genericMigrationUrl = new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url);
+  }
+  database.exec(readFileSync(genericMigrationUrl, "utf8"));
   migrateAiPolishHistory(database);
   return database;
 }

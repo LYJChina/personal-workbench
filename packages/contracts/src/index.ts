@@ -196,6 +196,69 @@ export const ReminderTestResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("failure"), category: ReminderFailureCategorySchema, message: z.string() })
 ]);
 
+export const ReminderLifecycleSchema = z.enum(["once", "finite", "recurring"]);
+export const ReminderScheduleTypeSchema = z.enum(["once", "daily", "workday", "weekly", "monthly"]);
+const GenericReminderFieldsSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  enabled: z.boolean(),
+  lifecycle: ReminderLifecycleSchema,
+  scheduleType: ReminderScheduleTypeSchema,
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  localTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+  weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+  monthDay: z.number().int().min(1).max(31).nullable(),
+  totalOccurrences: z.number().int().min(1).max(10_000).nullable(),
+  recipient: z.string().trim().email().max(500),
+  subject: z.string().trim().min(1).max(500),
+  body: z.string().trim().min(1).max(20_000)
+});
+export const GenericReminderInputSchema = GenericReminderFieldsSchema.superRefine((value, context) => {
+  if (value.lifecycle === "once" && value.scheduleType !== "once") {
+    context.addIssue({ code: "custom", path: ["scheduleType"], message: "一次性提醒必须使用指定日期" });
+  }
+  if (value.lifecycle === "finite" && value.totalOccurrences === null) {
+    context.addIssue({ code: "custom", path: ["totalOccurrences"], message: "有限次数提醒需要总次数" });
+  }
+  if (value.lifecycle !== "finite" && value.totalOccurrences !== null) {
+    context.addIssue({ code: "custom", path: ["totalOccurrences"], message: "仅有限次数提醒可设置总次数" });
+  }
+  if (value.scheduleType === "weekly" && value.weekdays.length === 0) {
+    context.addIssue({ code: "custom", path: ["weekdays"], message: "每周提醒至少选择一天" });
+  }
+  if (value.scheduleType === "monthly" && value.monthDay === null) {
+    context.addIssue({ code: "custom", path: ["monthDay"], message: "每月提醒需要日期" });
+  }
+});
+export const GenericReminderSchema = GenericReminderFieldsSchema.extend({
+  id: z.string().min(1),
+  successfulOccurrences: z.number().int().nonnegative(),
+  nextRun: z.string().nullable(),
+  calendarBlocked: z.boolean()
+});
+export const GenericReminderAttemptSchema = z.object({
+  id: z.number().int().positive(),
+  reminderId: z.string().nullable(),
+  reminderName: z.string(),
+  scheduledFor: z.string(),
+  attemptedAt: z.string(),
+  status: z.enum(["success", "failure", "skipped"]),
+  errorCategory: ReminderFailureCategorySchema.nullable(),
+  recipient: z.string(),
+  subject: z.string(),
+  body: z.string()
+});
+export const HolidayDaySchema = z.object({
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dayType: z.enum(["holiday", "makeup_workday"]),
+  name: z.string().trim().min(1).max(100)
+});
+export const SchedulerStatusSchema = z.object({
+  installed: z.boolean(),
+  synchronized: z.boolean(),
+  taskName: z.literal("LYJWorkBench-ReminderRunner"),
+  message: z.string()
+});
+
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type CustomField = z.infer<typeof CustomFieldSchema>;
@@ -231,3 +294,10 @@ export type ReminderFailureCategory = z.infer<typeof ReminderFailureCategorySche
 export type ReminderAttempt = z.infer<typeof ReminderAttemptSchema>;
 export type Reminder = z.infer<typeof ReminderSchema>;
 export type ReminderTestResult = z.infer<typeof ReminderTestResultSchema>;
+export type ReminderLifecycle = z.infer<typeof ReminderLifecycleSchema>;
+export type ReminderScheduleType = z.infer<typeof ReminderScheduleTypeSchema>;
+export type GenericReminderInput = z.infer<typeof GenericReminderInputSchema>;
+export type GenericReminder = z.infer<typeof GenericReminderSchema>;
+export type GenericReminderAttempt = z.infer<typeof GenericReminderAttemptSchema>;
+export type HolidayDay = z.infer<typeof HolidayDaySchema>;
+export type SchedulerStatus = z.infer<typeof SchedulerStatusSchema>;
