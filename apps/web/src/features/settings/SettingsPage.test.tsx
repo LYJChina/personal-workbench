@@ -138,7 +138,7 @@ describe("SettingsPage", () => {
     renderPage();
     await screen.findByText("外观");
 
-    fireEvent.click(screen.getByLabelText(/纸间白/));
+    fireEvent.click(screen.getByLabelText(/雾林青/));
     fireEvent.change(screen.getByLabelText("界面密度"), { target: { value: "compact" } });
     fireEvent.change(screen.getByLabelText("圆角风格"), { target: { value: "subtle" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /通透面板/ }));

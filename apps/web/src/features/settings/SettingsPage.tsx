@@ -152,9 +152,9 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
           <legend>界面皮肤</legend>
           <div className="skin-options">
             {([
-              ["aurora", "云境蓝", "蓝紫渐变与通透面板"],
-              ["paper", "纸间白", "克制、清晰的办公界面"],
-              ["sage", "青屿绿", "保留原来的沉静绿色"]
+              ["aurora", "冰羽蓝", "冰晶照片与轻盈蓝色玻璃"],
+              ["paper", "雾林青", "晨雾山林与沉静青色玻璃"],
+              ["sage", "星河夜", "极光星空与深邃靛紫玻璃"]
             ] as const).map(([value, title, description]) => (
               <label className={`skin-option skin-option-${value}`} key={value}>
                 <input type="radio" name="skin" value={value} checked={appearance.skin === value} onChange={() => updateAppearance({ skin: value as WorkbenchSkin })} />

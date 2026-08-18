@@ -1,108 +1,72 @@
-/*
- * Skin contract: components only consume semantic variables. To add a skin,
- * register its name in AppearanceProvider and provide light/dark token blocks.
- */
+/* Each skin pairs an original local WebP backdrop with a legibility scrim and glass surfaces. */
 [data-theme="light"][data-skin="aurora"] {
-  --page-background: #eef2ff;
-  --surface-background: rgb(255 255 255 / 82%);
-  --surface-subtle: rgb(244 247 255 / 82%);
-  --text-color: #303956;
-  --heading-color: #18213f;
-  --muted-text-color: #5d6683;
-  --faint-text-color: #79829d;
-  --border-color: rgb(126 139 190 / 22%);
-  --border-strong: rgb(104 119 178 / 38%);
-  --primary-color: #5b67d6;
-  --primary-hover: #4753be;
-  --primary-soft: #e2e7ff;
-  --primary-soft-text: #3f4cb6;
-  --accent-color: #8b5cc7;
-  --accent-soft: #f0e7ff;
-  --shadow-sm: 0 8px 28px rgb(68 76 134 / 8%);
-  --shadow-md: 0 18px 48px rgb(68 76 134 / 14%);
-  --focus-ring: rgb(91 103 214 / 28%);
-  --backdrop-art: radial-gradient(circle at 78% 10%, rgb(169 180 255 / 46%), transparent 28rem), radial-gradient(circle at 18% 86%, rgb(210 183 255 / 34%), transparent 26rem), linear-gradient(145deg, #f7f9ff 0%, #edf1ff 55%, #f6f0ff 100%);
+  --page-background: #eaf2fb; --surface-background: rgb(249 252 255 / 66%); --surface-subtle: rgb(240 247 255 / 58%);
+  --text-color: #293956; --heading-color: #112543; --muted-text-color: #526680; --faint-text-color: #6c7f99;
+  --border-color: rgb(255 255 255 / 62%); --border-strong: rgb(101 137 181 / 35%);
+  --primary-color: #356fb4; --primary-hover: #285b97; --primary-soft: rgb(210 230 252 / 78%); --primary-soft-text: #245a98;
+  --accent-color: #7257b7; --accent-soft: rgb(235 226 255 / 78%); --shadow-sm: 0 8px 28px rgb(52 84 128 / 10%); --shadow-md: 0 18px 48px rgb(52 84 128 / 16%); --focus-ring: rgb(53 111 180 / 30%);
+  --backdrop-image: url("/backgrounds/frost-feather.webp"); --backdrop-position: center; --backdrop-scrim: linear-gradient(100deg, rgb(234 244 255 / 8%), rgb(244 248 255 / 20%)); --glass-blur: 18px; --glass-saturation: 118%;
 }
 
 [data-theme="dark"][data-skin="aurora"] {
-  --page-background: #11152c;
-  --surface-background: rgb(29 34 68 / 84%);
-  --surface-subtle: rgb(22 27 57 / 84%);
-  --text-color: #dce1ff;
-  --heading-color: #f5f6ff;
-  --muted-text-color: #b8c0e5;
-  --faint-text-color: #929bc6;
-  --border-color: rgb(171 181 255 / 17%);
-  --border-strong: rgb(171 181 255 / 31%);
-  --primary-color: #a9b2ff;
-  --primary-hover: #c3c9ff;
-  --primary-soft: #30396f;
-  --primary-soft-text: #d9ddff;
-  --accent-color: #d3a9ff;
-  --accent-soft: #44305f;
-  --shadow-sm: 0 8px 28px rgb(0 0 0 / 20%);
-  --shadow-md: 0 18px 48px rgb(0 0 0 / 32%);
-  --focus-ring: rgb(169 178 255 / 32%);
-  --backdrop-art: radial-gradient(circle at 78% 10%, rgb(99 112 220 / 24%), transparent 30rem), radial-gradient(circle at 18% 86%, rgb(136 77 181 / 18%), transparent 28rem), #11152c;
+  --page-background: #0d1830; --surface-background: rgb(17 31 59 / 72%); --surface-subtle: rgb(13 26 52 / 68%);
+  --text-color: #dce9fb; --heading-color: #f5f9ff; --muted-text-color: #b6c8e1; --faint-text-color: #92a8c6;
+  --border-color: rgb(205 225 255 / 18%); --border-strong: rgb(205 225 255 / 32%);
+  --primary-color: #8fc6ff; --primary-hover: #b8dcff; --primary-soft: rgb(43 82 128 / 72%); --primary-soft-text: #d8ecff;
+  --accent-color: #ccb5ff; --accent-soft: rgb(75 54 111 / 72%); --shadow-sm: 0 8px 28px rgb(0 0 0 / 24%); --shadow-md: 0 18px 48px rgb(0 0 0 / 38%); --focus-ring: rgb(143 198 255 / 34%);
+  --backdrop-image: url("/backgrounds/frost-feather.webp"); --backdrop-position: center; --backdrop-scrim: linear-gradient(110deg, rgb(4 15 34 / 74%), rgb(15 22 49 / 66%)); --glass-blur: 20px; --glass-saturation: 112%;
 }
 
 [data-theme="light"][data-skin="paper"] {
-  --page-background: #f4f5f7;
-  --surface-background: rgb(255 255 255 / 94%);
-  --surface-subtle: #f7f8fa;
-  --text-color: #3f4652;
-  --heading-color: #1e2530;
-  --muted-text-color: #636c79;
-  --faint-text-color: #818996;
-  --border-color: #e1e4e8;
-  --border-strong: #cbd0d7;
-  --primary-color: #3f5f91;
-  --primary-hover: #304b75;
-  --primary-soft: #e6edf7;
-  --primary-soft-text: #304f7e;
-  --accent-color: #98613f;
-  --accent-soft: #f4e9e1;
-  --shadow-sm: 0 4px 18px rgb(35 42 54 / 6%);
-  --shadow-md: 0 14px 36px rgb(35 42 54 / 10%);
-  --focus-ring: rgb(63 95 145 / 24%);
-  --backdrop-art: linear-gradient(135deg, #f8f9fa, #eef0f3);
+  --page-background: #e8f2ef; --surface-background: rgb(250 253 251 / 68%); --surface-subtle: rgb(239 248 245 / 62%);
+  --text-color: #294642; --heading-color: #12332f; --muted-text-color: #526f6a; --faint-text-color: #708a85;
+  --border-color: rgb(248 255 252 / 58%); --border-strong: rgb(58 111 103 / 32%);
+  --primary-color: #287d72; --primary-hover: #20665e; --primary-soft: rgb(204 238 230 / 78%); --primary-soft-text: #1e665d;
+  --accent-color: #a36a37; --accent-soft: rgb(248 231 207 / 78%); --shadow-sm: 0 8px 26px rgb(25 76 69 / 10%); --shadow-md: 0 18px 46px rgb(25 76 69 / 16%); --focus-ring: rgb(40 125 114 / 28%);
+  --backdrop-image: url("/backgrounds/mist-forest.webp"); --backdrop-position: center; --backdrop-scrim: linear-gradient(105deg, rgb(239 248 244 / 20%), rgb(244 249 247 / 40%)); --glass-blur: 19px; --glass-saturation: 105%;
 }
 
 [data-theme="dark"][data-skin="paper"] {
-  --page-background: #17191d;
-  --surface-background: rgb(35 38 44 / 94%);
-  --surface-subtle: #1e2126;
-  --text-color: #e1e4e9;
-  --heading-color: #f8f9fb;
-  --muted-text-color: #bdc3cc;
-  --faint-text-color: #969eaa;
-  --border-color: #3a3e46;
-  --border-strong: #515761;
-  --primary-color: #a9c7f3;
-  --primary-hover: #c8dcf8;
-  --primary-soft: #2c405d;
-  --primary-soft-text: #d6e6fc;
-  --accent-color: #e4b392;
-  --accent-soft: #513728;
-  --backdrop-art: #17191d;
+  --page-background: #091b1a; --surface-background: rgb(11 35 34 / 72%); --surface-subtle: rgb(8 29 28 / 68%);
+  --text-color: #d8eeea; --heading-color: #f1fbf9; --muted-text-color: #b0cdc8; --faint-text-color: #88aaa4;
+  --border-color: rgb(202 245 236 / 17%); --border-strong: rgb(202 245 236 / 30%);
+  --primary-color: #76d6c8; --primary-hover: #a4ebe1; --primary-soft: rgb(25 83 76 / 72%); --primary-soft-text: #c8f5ee;
+  --accent-color: #f0bd86; --accent-soft: rgb(91 58 28 / 72%); --shadow-sm: 0 8px 28px rgb(0 0 0 / 24%); --shadow-md: 0 18px 48px rgb(0 0 0 / 38%); --focus-ring: rgb(118 214 200 / 32%);
+  --backdrop-image: url("/backgrounds/mist-forest.webp"); --backdrop-position: center; --backdrop-scrim: linear-gradient(105deg, rgb(3 18 18 / 70%), rgb(8 29 31 / 62%)); --glass-blur: 20px; --glass-saturation: 102%;
 }
 
-[data-theme="light"][data-skin="sage"] { --backdrop-art: linear-gradient(145deg, #f7fbfa, #eef7f5); }
-[data-theme="dark"][data-skin="sage"] { --backdrop-art: #071413; }
+[data-theme="light"][data-skin="sage"] {
+  --page-background: #e8ebf8; --surface-background: rgb(248 249 255 / 70%); --surface-subtle: rgb(237 240 252 / 64%);
+  --text-color: #303858; --heading-color: #161f46; --muted-text-color: #596381; --faint-text-color: #747e9d;
+  --border-color: rgb(244 247 255 / 58%); --border-strong: rgb(92 105 164 / 34%);
+  --primary-color: #5c5fc4; --primary-hover: #494ca8; --primary-soft: rgb(220 222 255 / 78%); --primary-soft-text: #4549a6;
+  --accent-color: #955bc2; --accent-soft: rgb(238 220 253 / 78%); --shadow-sm: 0 8px 28px rgb(36 43 99 / 12%); --shadow-md: 0 18px 48px rgb(36 43 99 / 18%); --focus-ring: rgb(92 95 196 / 30%);
+  --backdrop-image: url("/backgrounds/midnight-aurora.webp"); --backdrop-position: center; --backdrop-scrim: linear-gradient(110deg, rgb(235 239 253 / 44%), rgb(244 245 255 / 58%)); --glass-blur: 20px; --glass-saturation: 110%;
+}
+
+[data-theme="dark"][data-skin="sage"] {
+  --page-background: #060b22; --surface-background: rgb(11 18 49 / 70%); --surface-subtle: rgb(8 14 40 / 66%);
+  --text-color: #dde3ff; --heading-color: #f7f8ff; --muted-text-color: #b7c0e5; --faint-text-color: #929dc9;
+  --border-color: rgb(201 210 255 / 18%); --border-strong: rgb(201 210 255 / 32%);
+  --primary-color: #a9b3ff; --primary-hover: #c5ccff; --primary-soft: rgb(48 57 118 / 72%); --primary-soft-text: #e0e4ff;
+  --accent-color: #dda9ff; --accent-soft: rgb(73 42 99 / 72%); --shadow-sm: 0 8px 30px rgb(0 0 0 / 28%); --shadow-md: 0 20px 52px rgb(0 0 0 / 42%); --focus-ring: rgb(169 179 255 / 34%);
+  --backdrop-image: url("/backgrounds/midnight-aurora.webp"); --backdrop-position: center; --backdrop-scrim: linear-gradient(110deg, rgb(2 5 20 / 62%), rgb(4 8 29 / 48%)); --glass-blur: 20px; --glass-saturation: 114%;
+}
 
 [data-density="compact"] { --content-padding: clamp(1rem, 2.5vw, 2rem); --control-height: 2.35rem; --section-gap: .75rem; }
 [data-density="comfortable"] { --content-padding: clamp(1.5rem, 4vw, 3.25rem); --control-height: 2.7rem; --section-gap: 1rem; }
 [data-radius="rounded"] { --radius-md: 1rem; --radius-lg: 1.35rem; --control-radius: .72rem; }
 [data-radius="subtle"] { --radius-md: .5rem; --radius-lg: .7rem; --control-radius: .4rem; }
 
-[data-glass="true"] .sidebar,
-[data-glass="true"] .topbar,
-[data-glass="true"] .dashboard-module,
-[data-glass="true"] .ai-tool-card,
-[data-glass="true"] .feature-hero,
-[data-glass="true"] .daily-report-input,
-[data-glass="true"] .daily-report-result,
-[data-glass="true"] .daily-report-history article,
-[data-glass="true"] .settings-page > section,
-[data-glass="true"] .reminder-form,
-[data-glass="true"] .schedule-card { backdrop-filter: blur(18px) saturate(120%); }
+[data-glass="true"] .sidebar, [data-glass="true"] .topbar, [data-glass="true"] .privacy-badge,
+[data-glass="true"] .dashboard-module, [data-glass="true"] .ai-tool-card, [data-glass="true"] .polish-mode-card,
+[data-glass="true"] .feature-hero, [data-glass="true"] .daily-report-input, [data-glass="true"] .daily-report-result,
+[data-glass="true"] .daily-report-history article, [data-glass="true"] .settings-page > section,
+[data-glass="true"] .reminder-form, [data-glass="true"] .schedule-card, [data-glass="true"] .reminder-stats > div,
+[data-glass="true"] .ai-office-note {
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+[data-glass="false"] { --surface-background: color-mix(in srgb, var(--page-background) 14%, white 86%); --surface-subtle: color-mix(in srgb, var(--page-background) 24%, white 76%); }
+[data-theme="dark"][data-glass="false"] { --surface-background: color-mix(in srgb, var(--page-background) 42%, #111827 58%); --surface-subtle: color-mix(in srgb, var(--page-background) 58%, #111827 42%); }
