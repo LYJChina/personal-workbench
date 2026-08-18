@@ -38,6 +38,19 @@ describe("ProfileCard", () => {
     expect(screen.getByLabelText("姓名")).toHaveValue("李雨佳");
   });
 
+  it("shows a field error and blocks saving when a custom-field label is blank", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ProfileCard initialProfile={{ ...emptyProfile, name: "李雨佳", employeeNumber: "LYJ-001" }} onSave={onSave} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑个人信息" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加自定义信息" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("请输入自定义信息标签");
+    expect(screen.getByLabelText("标签")).toHaveAttribute("aria-invalid", "true");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("displays a profile loaded after the card first renders", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<ProfileCard initialProfile={emptyProfile} onSave={onSave} />);

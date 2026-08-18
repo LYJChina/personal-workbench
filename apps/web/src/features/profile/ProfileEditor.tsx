@@ -31,6 +31,9 @@ export function ProfileEditor({ initialProfile, isSaving, onCancel, onSave }: Pr
     if (!profile.name.trim()) nextErrors.name = "请输入姓名";
     if (!profile.employeeNumber.trim()) nextErrors.employeeNumber = "请输入员工编号";
     if (profile.birthday && !/^\d{4}-\d{2}-\d{2}$/.test(profile.birthday)) nextErrors.birthday = "生日格式应为 YYYY-MM-DD";
+    profile.customFields.forEach((field, index) => {
+      if (!field.label.trim()) nextErrors[`customFields.${index}.label`] = "请输入自定义信息标签";
+    });
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) onSave(profile, photo);
   }
@@ -58,19 +61,23 @@ export function ProfileEditor({ initialProfile, isSaving, onCancel, onSave }: Pr
       {errors.employeeNumber && <p role="alert">{errors.employeeNumber}</p>}
       <fieldset>
         <legend>自定义信息</legend>
-        {profile.customFields.map((field, index) => (
-          <div key={index}>
-            <label>
-              标签
-              <input value={field.label} onChange={(event) => setProfile((current) => ({ ...current, customFields: current.customFields.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) }))} />
-            </label>
-            <label>
-              内容
-              <input value={field.value} onChange={(event) => setProfile((current) => ({ ...current, customFields: current.customFields.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))} />
-            </label>
-            <button type="button" onClick={() => setProfile((current) => ({ ...current, customFields: current.customFields.filter((_, itemIndex) => itemIndex !== index) }))}>删除</button>
-          </div>
-        ))}
+        {profile.customFields.map((field, index) => {
+          const labelError = errors[`customFields.${index}.label`];
+          return (
+            <div key={index}>
+              <label>
+                标签
+                <input aria-invalid={Boolean(labelError)} value={field.label} onChange={(event) => setProfile((current) => ({ ...current, customFields: current.customFields.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) }))} />
+              </label>
+              {labelError && <p role="alert">{labelError}</p>}
+              <label>
+                内容
+                <input value={field.value} onChange={(event) => setProfile((current) => ({ ...current, customFields: current.customFields.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))} />
+              </label>
+              <button type="button" onClick={() => setProfile((current) => ({ ...current, customFields: current.customFields.filter((_, itemIndex) => itemIndex !== index) }))}>删除</button>
+            </div>
+          );
+        })}
         <button type="button" onClick={() => setProfile((current) => ({ ...current, customFields: [...current.customFields, { label: "", value: "" }] }))}>添加自定义信息</button>
       </fieldset>
       <label>
