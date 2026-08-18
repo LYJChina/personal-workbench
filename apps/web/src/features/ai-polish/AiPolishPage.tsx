@@ -82,7 +82,7 @@ export function AiPolishPage({ api: polishApi = defaultApi }: { api?: AiPolishAp
   }
 
   return <section className="daily-report-page ai-polish-page">
-    <header><Link className="back-link" to="/ai-office"><Icon name="arrow" size={17} />返回 AI 办公</Link><div className="page-heading"><div><span className="eyebrow">AI POLISH</span><h2>AI 润色</h2><p>选择办公场景，使用对应提示词生成可以直接使用的文案。</p></div><span className="privacy-badge"><Icon name="lock" size={14} /> 本地保存</span></div></header>
+    <h2 className="sr-only">AI 润色</h2>
 
     <nav className="polish-mode-grid" aria-label="润色场景">
       {polishPresets.map((item) => <Link aria-current={selectedKind === item.kind ? "page" : undefined} className={`polish-mode-card ${selectedKind === item.kind ? "active" : ""}`} to={`?mode=${item.kind}`} key={item.kind} onClick={(event) => { event.preventDefault(); selectKind(item.kind); }}><span className="tool-icon"><Icon name={item.icon} /></span><span><strong>{item.title}</strong><small>{item.description}</small></span><Icon name="arrow" size={16} className="mode-arrow" /></Link>)}

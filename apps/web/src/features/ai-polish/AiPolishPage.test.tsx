@@ -20,6 +20,15 @@ function createApi(): AiPolishApi {
 }
 
 describe("AI polish workspace", () => {
+  it("starts directly with the scenario cards without a repeated page header", () => {
+    render(<MemoryRouter><AiPolishPage api={createApi()} /></MemoryRouter>);
+
+    expect(screen.queryByText("AI POLISH")).not.toBeInTheDocument();
+    expect(screen.queryByText("选择办公场景，使用对应提示词生成可以直接使用的文案。")).not.toBeInTheDocument();
+    expect(screen.queryByText("本地保存")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "润色场景" })).toBeVisible();
+  });
+
   it("switches among four deep-linkable scenarios and exposes editable preset prompts", async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><AiPolishPage api={createApi()} /></MemoryRouter>);
