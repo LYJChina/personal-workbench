@@ -25,7 +25,21 @@ Start the Vite web development server and the Express API watcher together:
 pnpm dev
 ```
 
-The API listens only on `http://127.0.0.1:3001`. Stop the development processes with `Ctrl+C`.
+Open the development UI at `http://127.0.0.1:5173`. The API listens only on `http://127.0.0.1:3001`, and Vite forwards browser requests under `/api` to that exact loopback target so the development UI is API-functional.
+
+To use a different API port, set the same validated integer port for the Express server and Vite proxy before starting:
+
+```powershell
+$env:PORT = '43123'
+$env:LYJ_WORKBENCH_API_PORT = '43123'
+pnpm dev
+```
+
+The proxy target host cannot be overridden and remains `127.0.0.1`; malformed or out-of-range port overrides stop startup. Stop both development processes with `Ctrl+C`, then remove the two temporary environment values if they are no longer needed:
+
+```powershell
+Remove-Item Env:PORT, Env:LYJ_WORKBENCH_API_PORT -ErrorAction SilentlyContinue
+```
 
 ## Build and production-local start
 
@@ -44,8 +58,8 @@ pnpm local:start
 The default URL is `http://127.0.0.1:3001`. To suppress browser opening or choose another loopback port:
 
 ```powershell
-pnpm local:start -- -NoOpen
-pnpm local:start -- -Port 43123
+pnpm local:start -NoOpen
+pnpm local:start -Port 43123
 ```
 
 `local:start` rejects malformed ports and starts the server with the host fixed to `127.0.0.1`; external interfaces and hostnames are not supported. Stop it with `Ctrl+C`. Re-run `pnpm build` after changing source files.
@@ -106,14 +120,15 @@ Do not place credentials in project files, environment files, command arguments,
 
 ## Backup
 
-Before copying application data, stop `pnpm local:start` or `pnpm dev` with `Ctrl+C`. If `\LYJWorkBench-OutboundCheckin` is installed, temporarily disable that exact task and make sure it is not running:
+Before copying application data, stop `pnpm local:start` or `pnpm dev` with `Ctrl+C`, then run the verified preparation script:
 
 ```powershell
-Disable-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-OutboundCheckin'
-Get-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-OutboundCheckin' | Get-ScheduledTaskInfo
+powershell -NoProfile -File scripts/prepare-backup.ps1
 ```
 
-This prevents SQLite writes while the copy is in progress.
+The script queries only the exact root task `\LYJWorkBench-OutboundCheckin`, disables future triggers, stops that task if it is currently `Running`, re-queries it, and fails unless it is no longer running. It also fails while an LYJ Workbench server is still listening on `127.0.0.1:3001`. If the workbench used a non-default port, pass the same value with `-Port`.
+
+Do not copy data unless the script prints `Backup preparation complete`. This prevents SQLite writes while the copy is in progress.
 
 Copy the entire `%LOCALAPPDATA%\LYJWorkBench` directory to a protected local backup location. Keep the backup access restricted because it contains personal data and encrypted credential blobs. After the copy completes, re-enable the exact task if you disabled it, then resume the server:
 
@@ -123,7 +138,7 @@ Enable-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-OutboundCheckin'
 
 ## Restore on the same Windows account
 
-1. Stop the server and make sure the reminder task is not running.
+1. Stop the server and run `powershell -NoProfile -File scripts/prepare-backup.ps1`; continue only after it reports completion.
 2. Rename the current `%LOCALAPPDATA%\LYJWorkBench` directory as a recoverable pre-restore copy.
 3. Copy the backed-up `LYJWorkBench` directory into `%LOCALAPPDATA%`.
 4. Start the workbench and verify the profile, theme, layout, reports, and reminder settings.

@@ -142,6 +142,8 @@ if (-not [int]::TryParse($Port, [ref]$ParsedPort) -or $ParsedPort -gt 65535) {
 
 $Url = "http://127.0.0.1:$ParsedPort"
 $HealthUrl = "$Url/api/health"
+$InstanceToken = [Guid]::NewGuid().ToString('N')
+$InstanceHeader = 'X-LYJ-Workbench-Instance'
 $StartInfo = New-Object System.Diagnostics.ProcessStartInfo
 $StartInfo.FileName = $ResolvedNodePath
 $StartInfo.Arguments = '"' + $ResolvedServerEntryPath + '"'
@@ -159,6 +161,7 @@ foreach ($Name in @('SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'LOCALAPPDATA', 'APPD
 $StartInfo.EnvironmentVariables['NODE_ENV'] = 'production'
 $StartInfo.EnvironmentVariables['HOST'] = '127.0.0.1'
 $StartInfo.EnvironmentVariables['PORT'] = [string]$ParsedPort
+$StartInfo.EnvironmentVariables['LYJ_WORKBENCH_INSTANCE_TOKEN'] = $InstanceToken
 
 $Child = New-Object System.Diagnostics.Process
 $Child.StartInfo = $StartInfo
@@ -179,8 +182,10 @@ try {
             throw "The local server exited before it became healthy (exit code $($Child.ExitCode))."
         }
         try {
-            $Health = Invoke-RestMethod -Uri $HealthUrl -Method Get -TimeoutSec 2
-            if ($Health.status -eq 'ok') {
+            $HealthResponse = Invoke-WebRequest -UseBasicParsing -Uri $HealthUrl -Method Get -TimeoutSec 2
+            $Health = $HealthResponse.Content | ConvertFrom-Json
+            $ResponseInstanceToken = [string]$HealthResponse.Headers[$InstanceHeader]
+            if ($Health.status -eq 'ok' -and $ResponseInstanceToken -ceq $InstanceToken) {
                 $Healthy = $true
                 break
             }

@@ -21,6 +21,7 @@ export interface CreateAppOptions {
   reminderChannel?: NotificationChannel;
   now?: () => Date;
   webDistDir?: string;
+  instanceToken?: string;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -32,6 +33,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use(express.json());
 
   app.get("/api/health", (_request, response) => {
+    if (options.instanceToken) {
+      response.setHeader("X-LYJ-Workbench-Instance", options.instanceToken);
+    }
     response.json(HealthResponseSchema.parse({ status: "ok" }));
   });
 

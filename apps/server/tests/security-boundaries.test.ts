@@ -1,5 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -29,6 +31,15 @@ function processExists(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+async function listen(server: Server): Promise<number> {
+  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  return (server.address() as AddressInfo).port;
+}
+
+async function close(server: Server): Promise<void> {
+  await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
 }
 
 class EmptySecretStore implements SecretStore {
@@ -130,7 +141,11 @@ describe("production-local security boundaries", () => {
       }));
       const server = http.createServer((request, response) => {
         if (request.url === "/api/health") {
-          response.writeHead(200, { "Content-Type": "application/json" });
+          const headers = { "Content-Type": "application/json" };
+          if (process.env.LYJ_WORKBENCH_INSTANCE_TOKEN) {
+            headers["X-LYJ-Workbench-Instance"] = process.env.LYJ_WORKBENCH_INSTANCE_TOKEN;
+          }
+          response.writeHead(200, headers);
           response.end(JSON.stringify({ status: "ok" }));
           setTimeout(() => server.close(() => process.exit(0)), 250);
           return;
@@ -156,6 +171,7 @@ describe("production-local security boundaries", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("http://127.0.0.1:43127");
     expect(recorded).toMatchObject({ argv: [], cwd: projectRoot, host: "127.0.0.1", port: "43127", nodeEnv: "production" });
+    expect(recorded.environment.LYJ_WORKBENCH_INSTANCE_TOKEN).toMatch(/^[a-f0-9]{32}$/);
     expect(JSON.stringify(recorded)).not.toContain("must-not-reach-child");
     expect(Object.keys(recorded.environment).map((key) => key.toLowerCase())).not.toEqual(expect.arrayContaining([
       "deepseek_api_key", "smtp_password", "lyj_secret_sentinel"
@@ -233,4 +249,59 @@ describe("production-local security boundaries", () => {
       if (childPid && processExists(childPid)) process.kill(childPid);
     }
   }, 10_000);
+
+  it("rejects an incumbent healthy responder when the launched child loses the port collision", async () => {
+    const incumbent = createServer((request, response) => {
+      if (request.url === "/api/health") {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "ok" }));
+        return;
+      }
+      response.writeHead(404); response.end();
+    });
+    const port = await listen(incumbent);
+    const projectRoot = join(tempDir, "port collision fixture");
+    const serverEntry = join(projectRoot, "apps", "server", "dist", "index.js");
+    const webIndex = join(projectRoot, "apps", "web", "dist", "index.html");
+    const childPidFile = join(projectRoot, "collision-child.pid");
+    const browserMarker = join(tempDir, "browser-opened.txt");
+    const wrapper = join(tempDir, "collision-wrapper.ps1");
+    await mkdir(join(projectRoot, "apps", "server", "dist"), { recursive: true });
+    await mkdir(join(projectRoot, "apps", "web", "dist"), { recursive: true });
+    await writeFile(webIndex, "<!doctype html><title>collision fixture</title>");
+    await writeFile(serverEntry, `
+      const fs = require("node:fs");
+      const http = require("node:http");
+      const path = require("node:path");
+      fs.writeFileSync(path.join(process.cwd(), "collision-child.pid"), String(process.pid));
+      const server = http.createServer((_request, response) => response.end());
+      server.on("error", () => setTimeout(() => process.exit(7), 1_000));
+      server.listen(Number(process.env.PORT), process.env.HOST);
+    `);
+    const launcher = resolve(process.cwd(), "../../scripts/start-local.ps1");
+    await writeFile(wrapper, `
+      param([string]$Launcher, [string]$ProjectRoot, [string]$NodePath, [string]$EntryPath, [string]$Port)
+      function Start-Process { param($FilePath) Set-Content -LiteralPath $env:LYJ_BROWSER_MARKER -Value $FilePath }
+      & $Launcher -ProjectRoot $ProjectRoot -NodePath $NodePath -ServerEntryPath $EntryPath -Port $Port -HealthTimeoutSeconds 5
+    `);
+
+    try {
+      let failure: unknown;
+      try {
+        await execFileAsync("powershell", [
+          "-NoProfile", "-File", wrapper, "-Launcher", launcher, "-ProjectRoot", projectRoot,
+          "-NodePath", process.execPath, "-EntryPath", serverEntry, "-Port", String(port)
+        ], { env: { ...process.env, LYJ_BROWSER_MARKER: browserMarker }, timeout: 10_000 });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({ code: expect.any(Number) });
+      expect(String((failure as { stdout?: string }).stdout ?? "")).not.toContain("LYJ Workbench is ready");
+      await expect(readFile(browserMarker, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      const childPid = Number(await readFile(childPidFile, "utf8"));
+      expect(processExists(childPid)).toBe(false);
+    } finally {
+      await close(incumbent);
+    }
+  }, 15_000);
 });
