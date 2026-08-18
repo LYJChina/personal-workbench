@@ -9,14 +9,19 @@ import { ReminderPage } from "../features/reminders/ReminderPage";
 import { api } from "../lib/api";
 import { Sidebar } from "./Sidebar";
 import { ThemeProvider } from "./ThemeProvider";
+import { Icon } from "./Icon";
 
 function Shell() {
   return (
     <div className="app-shell">
       <Sidebar />
-      <main>
-        <Outlet />
-      </main>
+      <div className="app-main">
+        <header className="topbar">
+          <div className="topbar-context"><span className="status-dot" />本地工作台</div>
+          <div className="privacy-badge"><Icon name="lock" size={15} /> 数据仅保存在此电脑</div>
+        </header>
+        <main id="main-content"><Outlet /></main>
+      </div>
     </div>
   );
 }
@@ -33,11 +38,9 @@ function HomePage() {
     setLayout(await api.updateLayout(nextLayout));
   }
 
-  return <>{error && <p role="alert">{error}</p>}{layout.length > 0 && <EditableDashboard initialLayout={layout} onSave={saveLayout} />}</>;
-}
-
-function Page({ title }: { title: string }) {
-  return <h2>{title}</h2>;
+  if (error) return <div className="empty-state" role="alert"><strong>工作台暂时无法加载</strong><span>{error}</span></div>;
+  if (layout.length === 0) return <div className="page-loading" role="status"><span className="spinner" />正在准备你的工作台…</div>;
+  return <EditableDashboard initialLayout={layout} onSave={saveLayout} />;
 }
 
 export function App() {

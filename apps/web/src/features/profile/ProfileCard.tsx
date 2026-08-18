@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ProfileResponse, ProfileUpdate } from "@workbench/contracts";
 import { ProfileEditor } from "./ProfileEditor";
+import { Icon } from "../../app/Icon";
 
 interface ProfileCardProps {
   initialProfile: ProfileResponse;
@@ -36,8 +37,8 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
 
   if (editing) {
     return (
-      <section aria-label="个人信息编辑">
-        <h2>编辑个人信息</h2>
+      <section aria-label="个人信息编辑" className="profile-card profile-editor-card">
+        <div className="card-heading"><div className="card-icon"><Icon name="user" /></div><div><span className="eyebrow">PROFILE</span><h2>编辑个人信息</h2></div></div>
         {feedback && <p role="alert">{feedback}</p>}
         <ProfileEditor initialProfile={profile} isSaving={isSaving} onCancel={() => setEditing(false)} onSave={save} />
       </section>
@@ -45,14 +46,21 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
   }
 
   return (
-    <section aria-label="个人信息">
-      <h2>个人信息</h2>
-      {profile.photoFilename && <img src={`/api/profile/photo/${profile.photoFilename}`} alt={`${profile.name}的头像`} />}
-      <p>姓名：{profile.name || "未填写"}</p>
-      <p>生日：{profile.birthday || "未填写"}</p>
-      <p>员工编号：{profile.employeeNumber || "未填写"}</p>
-      {profile.customFields.map((field) => <p key={`${field.label}-${field.value}`}>{field.label}：{field.value}</p>)}
-      <button type="button" onClick={() => { setFeedback(null); setEditing(true); }}>编辑个人信息</button>
+    <section aria-label="个人信息" className="profile-card">
+      <div className="profile-hero">
+        <div className="profile-avatar">
+          {profile.photoFilename ? <img src={`/api/profile/photo/${profile.photoFilename}`} alt={`${profile.name}的头像`} /> : <span>{profile.name.trim().slice(0, 1).toUpperCase() || "LYJ"}</span>}
+        </div>
+        <div className="profile-identity"><span className="eyebrow">MY PROFILE</span><h2>{profile.name || "你好，欢迎回来"}</h2><p>{profile.employeeNumber ? `员工编号 ${profile.employeeNumber}` : "完善个人信息，让工作台真正属于你"}</p></div>
+        <button aria-label="编辑个人信息" className="button-secondary compact" type="button" onClick={() => { setFeedback(null); setEditing(true); }}><Icon name="edit" size={16} />编辑资料</button>
+      </div>
+      <span className="sr-only">姓名：{profile.name || "未填写"}</span>
+      <span className="sr-only">员工编号：{profile.employeeNumber || "未填写"}</span>
+      <div className="profile-details">
+        <div><span>生日</span><strong>{profile.birthday || "未填写"}</strong></div>
+        <div><span>员工编号</span><strong>{profile.employeeNumber || "未填写"}</strong></div>
+        {profile.customFields.map((field) => <div key={`${field.label}-${field.value}`}><span>{field.label}</span><strong>{field.value || "未填写"}</strong></div>)}
+      </div>
     </section>
   );
 }

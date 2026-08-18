@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { DailyReport } from "@workbench/contracts";
+import { Icon } from "../../app/Icon";
 
 interface DailyReportHistoryProps {
   reports: DailyReport[];
@@ -45,17 +46,17 @@ export function DailyReportHistory({ reports, onReopen, onSave }: DailyReportHis
 
   return (
     <section className="daily-report-history" aria-labelledby="daily-report-history-heading">
-      <h3 id="daily-report-history-heading">历史日报</h3>
+      <div className="section-heading"><div><h3 id="daily-report-history-heading">历史日报</h3><p>已生成的日报会安全保存在本机。</p></div><span className="count-badge">{reports.length} 条</span></div>
       {feedback && <p role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</p>}
-      {reports.length === 0 ? <p>暂无历史日报</p> : (
+      {reports.length === 0 ? <div className="empty-state compact"><Icon name="clock" size={24} /><strong>暂无历史日报</strong><span>第一次生成后，记录会出现在这里。</span></div> : (
         <div className="daily-report-history-list">
           {reports.map((report) => (
             <article key={report.id}>
-              <time dateTime={report.createdAt}>{displayDate(report.createdAt)}</time>
+              <time dateTime={report.createdAt}><Icon name="clock" size={15} />{displayDate(report.createdAt)}</time>
               <p>{preview(report.content)}</p>
               <div className="daily-report-actions">
-                <button type="button" onClick={() => onReopen(report)}>重新打开</button>
-                <button type="button" onClick={() => beginEdit(report)}>编辑</button>
+                <button className="button-ghost" type="button" onClick={() => onReopen(report)}>重新打开</button>
+                <button className="button-ghost" type="button" onClick={() => beginEdit(report)}><Icon name="edit" size={15} />编辑</button>
               </div>
               {editingId === report.id && (
                 <div className="daily-report-editor">

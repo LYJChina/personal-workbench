@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Reminder, ReminderTestResult, ReminderUpdate } from "@workbench/contracts";
 import { api as defaultApi } from "../../lib/api";
+import { Icon } from "../../app/Icon";
 
 export interface ReminderApi {
   getReminder(): Promise<Reminder>;
@@ -84,36 +85,36 @@ export function ReminderPage({ api: reminderApi = defaultApi }: ReminderPageProp
     }
   }
 
-  if (!form || !reminder) return <section><h2>外勤打卡邮件提醒</h2>{feedback && <p role="alert">{feedback.message}</p>}<p>正在加载提醒设置…</p></section>;
+  if (!form || !reminder) return <section className="page-loading">{feedback && <p role="alert">{feedback.message}</p>}<span className="spinner" />正在加载提醒设置…</section>;
 
   return (
     <section className="reminder-page">
       <header>
-        <h2>外勤打卡邮件提醒</h2>
-        <p>每周一由本机任务计划程序发送提醒，网页关闭时也可运行。</p>
+        <div className="page-heading"><div><span className="eyebrow">AUTOMATION</span><h2>外勤打卡邮件提醒</h2><p>每周一由本机任务计划程序发送，网页关闭时也能准时运行。</p></div><span className={`status-chip ${form.enabled ? "" : "neutral"}`}>{form.enabled ? "运行中" : "未启用"}</span></div>
       </header>
-      <form onSubmit={save}>
-        <label><input type="checkbox" checked={form.enabled} onChange={(event) => update("enabled", event.target.checked)} />启用每周一提醒</label>
+      <div className="reminder-layout"><form className="reminder-form" onSubmit={save}>
+        <div className="toggle-row"><div><strong>启用每周一提醒</strong><span>系统会在设定时间发送邮件</span></div><label className="switch"><input aria-label="启用每周一提醒" type="checkbox" checked={form.enabled} onChange={(event) => update("enabled", event.target.checked)} /><span /></label></div>
         <label>收件邮箱<input type="email" required value={form.recipient} onChange={(event) => update("recipient", event.target.value)} /></label>
         <label>提醒时间<input type="time" required value={form.localTime} onChange={(event) => update("localTime", event.target.value)} /></label>
         <label>邮件主题<input required value={form.subject} onChange={(event) => update("subject", event.target.value)} /></label>
         <label>邮件正文<textarea required rows={6} value={form.body} onChange={(event) => update("body", event.target.value)} /></label>
-        <div>
-          <button type="submit" disabled={saving}>{saving ? "保存中…" : "保存提醒"}</button>
-          <button type="button" disabled={testing} onClick={() => void sendTest()}>{testing ? "发送中…" : "发送测试邮件"}</button>
+        <div className="form-actions">
+          <button className="button-primary" type="submit" disabled={saving}>{saving ? "保存中…" : "保存提醒"}</button>
+          <button className="button-secondary" type="button" disabled={testing} onClick={() => void sendTest()}><Icon name="mail" size={17} />{testing ? "发送中…" : "发送测试邮件"}</button>
         </div>
       </form>
-      {feedback && <p role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</p>}
+      <aside className="schedule-card"><span className="card-icon warm"><Icon name="clock" /></span><span className="eyebrow">NEXT RUN</span><strong>{formatDateTime(reminder.nextRun)}</strong><p>时间以北京时间（Asia/Shanghai）计算</p></aside></div>
+      {feedback && <p className={`feedback-banner ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</p>}
       {reminder.schedulerReinstallRequired && (
         <aside aria-label="任务计划同步警告">
           <p>任务计划时间尚未同步。请在 PowerShell 中运行：</p>
           <code>{reminder.schedulerReinstallInstruction}</code>
         </aside>
       )}
-      <dl>
+      <dl className="reminder-stats">
         <div><dt>下次运行</dt><dd>{formatDateTime(reminder.nextRun)}</dd></div>
-        <div><dt>上次成功</dt><dd>{reminder.lastSuccess ? `${reminder.lastSuccess.localDate} ${formatDateTime(reminder.lastSuccess.attemptedAt)}` : "暂无"}</dd></div>
-        <div><dt>上次失败</dt><dd>{reminder.lastFailure ? `${reminder.lastFailure.localDate} ${reminder.lastFailure.category}` : "暂无"}</dd></div>
+        <div><dt>上次成功</dt><dd>{reminder.lastSuccess ? `${reminder.lastSuccess.localDate} ${formatDateTime(reminder.lastSuccess.attemptedAt)}` : "暂无记录"}</dd></div>
+        <div><dt>上次失败</dt><dd>{reminder.lastFailure ? `${reminder.lastFailure.localDate} ${reminder.lastFailure.category}` : "暂无记录"}</dd></div>
       </dl>
     </section>
   );

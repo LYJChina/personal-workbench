@@ -44,7 +44,7 @@ export const moduleRegistry: Record<ModuleId, ModuleDefinition> = {
   profile: {
     id: "profile",
     title: "个人信息",
-    minW: 4,
+    minW: 6,
     minH: 4,
     render: () => <ProfileModule />
   }
