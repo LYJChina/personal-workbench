@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { DailyReportInputSchema, DailyReportUpdateSchema } from "@workbench/contracts";
+import { DailyReportInputSchema, DailyReportUpdateSchema, type DailyReport } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import type { SecretStore } from "../../platform/dpapi.js";
@@ -60,18 +60,27 @@ export function createDailyReportRouter(paths: AppPaths, dependencies: DailyRepo
       return errorResponse(response, 409, "请先在设置中配置 DeepSeek", "DEEPSEEK_NOT_CONFIGURED");
     }
 
+    let generated: { content: string; model: string };
     try {
-      const generated = await dependencies.deepSeekClient.generateDailyReport({
+      generated = await dependencies.deepSeekClient.generateDailyReport({
         completed: parsed.data.completed,
         risks: parsed.data.risks,
         baseUrl: settings.baseUrl,
         model: settings.model,
         apiKey
       });
-      response.status(201).json(reportsFor(response).create(parsed.data, generated));
     } catch (error) {
       providerError(response, error);
+      return;
     }
+
+    let saved: DailyReport;
+    try {
+      saved = reportsFor(response).create(parsed.data, generated);
+    } catch {
+      throw new Error("Daily report persistence failed");
+    }
+    response.status(201).json(saved);
   }));
 
   router.get("/daily-reports", (_request, response) => {

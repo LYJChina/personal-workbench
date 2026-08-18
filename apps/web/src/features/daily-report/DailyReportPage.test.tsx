@@ -96,6 +96,24 @@ describe("AI Office daily report flow", () => {
     expect(await screen.findByText("已复制全文")).toBeVisible();
   });
 
+  it("keeps a successful result and shows a distinct warning when only history refresh fails", async () => {
+    const history = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("history-refresh-raw-error"));
+    const reportApi = renderPage(createApi({ getDailyReports: history }));
+    fireEvent.change(screen.getByLabelText("今日完成"), { target: { value: "完成日报页面" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "生成日报" }));
+
+    const result = await screen.findByRole("region", { name: "生成结果" });
+    expect(result).toHaveTextContent("完成日报页面");
+    expect(reportApi.generateDailyReport).toHaveBeenCalledTimes(1);
+    expect(history).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("history-refresh-raw-error")).not.toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("日报已生成并保存，但历史记录刷新失败，请勿重复生成");
+  });
+
   it("reports clipboard failure accurately", async () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
     renderPage();

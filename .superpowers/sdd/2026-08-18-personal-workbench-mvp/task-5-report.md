@@ -105,3 +105,50 @@ The first server GREEN attempt then caught a real provider-boundary issue: sprea
 
 - No real DeepSeek request was made because no user credential was supplied. The injected client/fetch seams cover the complete request shape, 30-second abort, redirect refusal, response parsing, and error mapping deterministically.
 - The existing initial migration already contained the report table, so schema-upgrade behavior was not needed or changed.
+
+## Fix Round 1 (2026-08-18)
+
+### Findings Addressed
+
+1. Generation success and the subsequent history refresh now have separate UI error phases. Once the POST resolves, the generated report remains displayed and the generation pending state ends. A refresh failure produces the distinct non-blocking status `日报已生成并保存，但历史记录刷新失败，请勿重复生成`; it does not populate the generation error alert or expose the raw refresh exception.
+2. Provider generation and local SQLite persistence now have separate server error boundaries. Only `generateDailyReport` failures enter DeepSeek category mapping. A repository insertion failure after provider success is replaced with the sanitized local error `Daily report persistence failed`, then handled by the existing generic HTTP 500 boundary; it cannot be mislabeled as `DEEPSEEK_UPSTREAM_ERROR` or leak the database error.
+
+### RED Evidence
+
+- `pnpm --filter @workbench/server test -- daily-report.test.ts`
+  - Exit 1; 1 failed and 17 passed.
+  - The real SQLite `BEFORE INSERT` failing trigger ran after one successful injected provider call, but the route returned HTTP 502 instead of the literal expected HTTP 500.
+- `pnpm --filter @workbench/web test -- DailyReportPage.test.tsx`
+  - Exit 1; 1 failed and 7 passed.
+  - Generation succeeded and its result rendered, but the second `getDailyReports` rejection appeared as the form's `role="alert"` with the raw `history-refresh-raw-error` message instead of a distinct history warning.
+
+Both failures directly reproduced the reviewed boundary defects before production changes.
+
+### GREEN and Verification Evidence
+
+- `pnpm --filter @workbench/server test -- daily-report.test.ts`
+  - Exit 0; 1 file and 18 tests passed.
+- `pnpm --filter @workbench/web test -- DailyReportPage.test.tsx`
+  - Exit 0; 1 file and 8 tests passed.
+- `pnpm test`
+  - Exit 0.
+  - Contracts: no test files, permitted by the existing script.
+  - Server: 6 files and 76 tests passed.
+  - Web: 5 files and 30 tests passed.
+- `pnpm build`
+  - Exit 0; contracts/server type-check and web production build passed; 83 web modules transformed.
+- `pnpm check`
+  - Exit 0 for contracts, server, and web.
+- `git diff --check`
+  - Exit 0; only Windows LF-to-CRLF notices were emitted.
+
+### Covering Tests and Security Reasoning
+
+- `keeps a successful result and shows a distinct warning when only history refresh fails` provides an initial successful history load followed by a failed automatic refresh. It proves the result remains visible, the provider-facing generation method is called once, no main alert or raw ancillary error is shown, and the warning explicitly tells the user not to regenerate.
+- `maps a local persistence failure to a sanitized 500 after one successful provider call` installs a real SQLite trigger that rejects only report insertion. It proves the provider was called once, the response is the generic 500 payload, subsequent history is empty, neither the response nor logger contains the trigger sentinel/key/Bearer value, and no DeepSeek error code is returned.
+- The local persistence catch deliberately discards the original SQLite error before invoking the global handler. Provider response content, credentials, and database diagnostic text therefore cannot flow into the generic logger through this path.
+
+### Concerns
+
+- The UI warning intentionally leaves the generated result available for copying even though history could not be reloaded. The successful server response is authoritative that the report was saved; retrying generation would risk a duplicate row.
+- No deferred Minor findings were changed in this round.

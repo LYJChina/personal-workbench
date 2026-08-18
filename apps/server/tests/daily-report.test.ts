@@ -4,6 +4,8 @@ import { join } from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
+import { resolveAppPaths } from "../src/config/paths";
+import { openDatabase } from "../src/db/database";
 import { buildDailyReportMessages } from "../src/modules/daily-reports/daily-report.prompt";
 import {
   DeepSeekClient,
@@ -213,6 +215,32 @@ describe("daily report API", () => {
     });
     expect(Date.parse(response.body.createdAt)).not.toBeNaN();
     expect(response.body.updatedAt).toBe(response.body.createdAt);
+  });
+
+  it("maps a local persistence failure to a sanitized 500 after one successful provider call", async () => {
+    const generator = new StubGenerator();
+    const app = createApp({ dataDir: tempDir, secretStore, deepSeekClient: generator });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await configure(app, "provider-key-must-not-leak");
+    const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    database.exec(`
+      CREATE TRIGGER fail_daily_report_insert
+      BEFORE INSERT ON daily_reports
+      BEGIN
+        SELECT RAISE(FAIL, 'persistence-secret-must-not-leak');
+      END;
+    `);
+    database.close();
+
+    const response = await request(app).post("/api/daily-reports/generate").send({ completed: "完成接口", risks: "" });
+    const history = await request(app).get("/api/daily-reports");
+
+    expect(generator.inputs).toHaveLength(1);
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: { message: "Internal Server Error", code: "INTERNAL_ERROR" } });
+    expect(history.body).toEqual([]);
+    expect(JSON.stringify(response.body)).not.toMatch(/DEEPSEEK_|provider-key|persistence-secret|Bearer/i);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(/provider-key|persistence-secret|Bearer/i);
   });
 
   it("lists newest first and validates, loads, and edits reports without changing original input", async () => {

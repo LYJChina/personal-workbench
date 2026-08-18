@@ -33,6 +33,7 @@ export function DailyReportPage({ api: reportApi = defaultApi }: DailyReportPage
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyWarning, setHistoryWarning] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   const refreshHistory = useCallback(async () => {
@@ -43,7 +44,7 @@ export function DailyReportPage({ api: reportApi = defaultApi }: DailyReportPage
     let active = true;
     reportApi.getDailyReports()
       .then((loaded) => { if (active) setReports(newestFirst(loaded)); })
-      .catch((reason: unknown) => { if (active) setError(messageFor(reason)); });
+      .catch(() => { if (active) setHistoryWarning("历史记录加载失败，请稍后重试"); });
     return () => { active = false; };
   }, [reportApi]);
 
@@ -53,14 +54,22 @@ export function DailyReportPage({ api: reportApi = defaultApi }: DailyReportPage
     setSubmitting(true);
     setError(null);
     setCopyFeedback(null);
+    let generated: DailyReport;
     try {
-      const generated = await reportApi.generateDailyReport({ completed, risks });
-      setResult(generated);
-      await refreshHistory();
+      generated = await reportApi.generateDailyReport({ completed, risks });
     } catch (reason) {
       setError(messageFor(reason));
-    } finally {
       setSubmitting(false);
+      return;
+    }
+
+    setResult(generated);
+    setSubmitting(false);
+    try {
+      await refreshHistory();
+      setHistoryWarning(null);
+    } catch {
+      setHistoryWarning("日报已生成并保存，但历史记录刷新失败，请勿重复生成");
     }
   }
 
@@ -113,6 +122,7 @@ export function DailyReportPage({ api: reportApi = defaultApi }: DailyReportPage
         </section>
       </div>
 
+      {historyWarning && <p role="status" className="daily-report-history-warning">{historyWarning}</p>}
       <DailyReportHistory reports={reports} onReopen={setResult} onSave={saveHistory} />
     </section>
   );
