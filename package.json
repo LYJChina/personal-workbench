@@ -1,0 +1,14 @@
+{
+  "name": "lyj-workbench",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @workbench/server --filter @workbench/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "check": "pnpm -r check"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
