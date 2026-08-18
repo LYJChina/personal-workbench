@@ -881,12 +881,12 @@ describe("Monday outbound check-in reminder", () => {
       param([string]$Uninstaller)
       function Get-ScheduledTask {
         param($TaskName, $TaskPath, $ErrorAction)
-        Set-Content -LiteralPath $env:LYJ_QUERY_MARKER -Value ($TaskPath + '|' + $TaskName)
-        return [pscustomobject]@{ TaskName = 'LYJWorkBench-OutboundCheckin'; TaskPath = '\\' }
+        Add-Content -LiteralPath $env:LYJ_QUERY_MARKER -Value ($TaskPath + '|' + $TaskName)
+        return [pscustomobject]@{ TaskName = $TaskName; TaskPath = '\\' }
       }
       function Unregister-ScheduledTask {
         param($TaskName, $TaskPath, $Confirm)
-        Set-Content -LiteralPath $env:LYJ_REMOVAL_MARKER -Value ($TaskPath + '|' + $TaskName)
+        Add-Content -LiteralPath $env:LYJ_REMOVAL_MARKER -Value ($TaskPath + '|' + $TaskName)
       }
       & $Uninstaller -WhatIf -Confirm:$false
       if (Test-Path -LiteralPath $env:LYJ_REMOVAL_MARKER) { throw 'WhatIf performed a removal.' }
@@ -898,8 +898,12 @@ describe("Monday outbound check-in reminder", () => {
     });
 
     expect(stderr).toBe("");
-    expect((await readFile(queryMarker, "utf8")).trim()).toBe("\\|LYJWorkBench-OutboundCheckin");
-    expect((await readFile(removalMarker, "utf8")).trim()).toBe("\\|LYJWorkBench-OutboundCheckin");
+    expect((await readFile(queryMarker, "utf8")).trim().split(/\r?\n/)).toEqual([
+      "\\|LYJWorkBench-ReminderRunner", "\\|LYJWorkBench-OutboundCheckin"
+    ]);
+    expect((await readFile(removalMarker, "utf8")).trim().split(/\r?\n/)).toEqual([
+      "\\|LYJWorkBench-ReminderRunner", "\\|LYJWorkBench-OutboundCheckin"
+    ]);
   });
 
   it("refuses a same-name task returned from outside the exact root path", async () => {
@@ -910,7 +914,7 @@ describe("Monday outbound check-in reminder", () => {
       param([string]$Uninstaller)
       function Get-ScheduledTask {
         param($TaskName, $TaskPath, $ErrorAction)
-        return [pscustomobject]@{ TaskName = 'LYJWorkBench-OutboundCheckin'; TaskPath = '\\Foreign\\' }
+        return [pscustomobject]@{ TaskName = $TaskName; TaskPath = '\\Foreign\\' }
       }
       function Unregister-ScheduledTask {
         param($TaskName, $TaskPath, $Confirm)

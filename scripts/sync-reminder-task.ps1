@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $TaskName = 'LYJWorkBench-ReminderRunner'
+$LegacyTaskName = 'LYJWorkBench-OutboundCheckin'
 $TaskPath = '\'
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Join-Path $PSScriptRoot '..' }
 $ResolvedProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
@@ -26,7 +27,7 @@ if ($Existing -and ($Existing.TaskPath -ne $TaskPath -or $Existing.TaskName -ne 
     throw 'The scheduler returned a task outside the expected identity.'
 }
 if ($StatusOnly) {
-    Write-Status ([bool]$Existing) ([bool]$Existing) $(if ($Existing) { '系统计划已同步' } else { '系统计划尚未同步' })
+    Write-Status ([bool]$Existing) ([bool]$Existing) $(if ($Existing) { 'Scheduler synchronized' } else { 'Scheduler not synchronized' })
     return
 }
 
@@ -38,14 +39,12 @@ if ([string]::IsNullOrWhiteSpace($ReminderEntryPath)) {
 }
 $ResolvedReminderEntryPath = [System.IO.Path]::GetFullPath($ReminderEntryPath)
 if (-not (Test-Path -LiteralPath $ResolvedReminderEntryPath -PathType Leaf)) {
-    throw '提醒执行程序尚未构建。请先运行 pnpm build。'
+    throw 'The reminder runner is not built. Run pnpm build first.'
 }
 
 $Action = New-ScheduledTaskAction -Execute $ResolvedNodePath -Argument ('"' + $ResolvedReminderEntryPath + '" --run-due') -WorkingDirectory $ResolvedProjectRoot
 $StartAt = (Get-Date).AddMinutes(1)
-$Trigger = New-ScheduledTaskTrigger -Once -At $StartAt
-$Trigger.Repetition.Interval = 'PT1M'
-$Trigger.Repetition.Duration = 'P3650D'
+$Trigger = New-ScheduledTaskTrigger -Once -At $StartAt -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
 $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $Principal = New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType Interactive -RunLevel Limited
 $Target = "$TaskName | every minute | node=$ResolvedNodePath | entry=$ResolvedReminderEntryPath | cwd=$ResolvedProjectRoot"
@@ -53,4 +52,13 @@ if ($PSCmdlet.ShouldProcess($Target, 'Register current-user reminder task')) {
     Register-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Description 'Run due LYJ Workbench email reminders.' -Force | Out-Null
 }
 $Installed = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-Write-Status ([bool]$Installed) ([bool]$Installed) $(if ($Installed) { '系统计划已同步' } else { '系统计划同步未完成' })
+if ($Installed) {
+    $LegacyTask = Get-ScheduledTask -TaskPath $TaskPath -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+    if ($LegacyTask -and ($LegacyTask.TaskPath -ne $TaskPath -or $LegacyTask.TaskName -ne $LegacyTaskName)) {
+        throw 'The scheduler returned a legacy task outside the expected identity.'
+    }
+    if ($LegacyTask -and $PSCmdlet.ShouldProcess("$TaskPath$LegacyTaskName", 'Remove superseded reminder task')) {
+        Unregister-ScheduledTask -TaskPath $TaskPath -TaskName $LegacyTaskName -Confirm:$false
+    }
+}
+Write-Status ([bool]$Installed) ([bool]$Installed) $(if ($Installed) { 'Scheduler synchronized' } else { 'Scheduler synchronization incomplete' })

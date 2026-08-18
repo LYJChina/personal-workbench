@@ -76,20 +76,24 @@ Open **设置 → 邮件**. Enter the SMTP host, port, transport mode (`STARTTLS
 
 No email is sent during install, build, or local startup. The reminder page’s **发送测试邮件** action sends a real email when valid SMTP settings and a recipient are present.
 
-## Monday reminder task
+## Reminder center and system task
 
-Build before inspecting or installing the task. The scripts operate only on the exact current-user task `\LYJWorkBench-OutboundCheckin`.
+The **提醒事项** page supports one-time, finite-count, and recurring email reminders. Schedules can use an exact date and time, daily, weekly, monthly, or Chinese workdays. Use **同步系统计划** on that page to create or refresh the exact current-user task `\LYJWorkBench-ReminderRunner`; no command needs to be copied into PowerShell. The sync also removes the superseded exact task `\LYJWorkBench-OutboundCheckin` after the new runner is installed, preventing duplicate delivery.
+
+The home page includes a monthly calendar and a scrollable list of upcoming reminders. Use **更新节假日** on the calendar to refresh the current and next year from the public Chinese holiday dataset. A workday reminder pauses for a year whose calendar has not been synchronized instead of guessing.
+
+Build before using the one-click scheduler action. The command below remains available for inspection or maintenance:
 
 Preview installation without changing Task Scheduler:
 
 ```powershell
-powershell -NoProfile -File scripts/install-reminder-task.ps1 -WhatIf
+powershell -NoProfile -File scripts/sync-reminder-task.ps1 -WhatIf
 ```
 
 Install after reviewing the preview:
 
 ```powershell
-powershell -NoProfile -File scripts/install-reminder-task.ps1
+powershell -NoProfile -File scripts/sync-reminder-task.ps1
 ```
 
 Preview removal, then remove only that exact task:
@@ -99,7 +103,7 @@ powershell -NoProfile -File scripts/uninstall-reminder-task.ps1 -WhatIf
 powershell -NoProfile -File scripts/uninstall-reminder-task.ps1
 ```
 
-Changing the reminder time in the web UI does not silently replace a Windows scheduled task. When the reminder page shows the scheduler reinstall warning, run the installer again and confirm replacement so Task Scheduler and the saved reminder time match.
+The generic runner checks due reminders every minute; changing a reminder does not require reinstalling the task.
 
 ## Local data
 
@@ -126,14 +130,14 @@ Before copying application data, stop `pnpm local:start` or `pnpm dev` with `Ctr
 powershell -NoProfile -File scripts/prepare-backup.ps1
 ```
 
-The script queries only the exact root task `\LYJWorkBench-OutboundCheckin`, disables future triggers, stops that task if it is currently `Running`, re-queries it, and fails unless it is no longer running. It also fails while an LYJ Workbench server is still listening on `127.0.0.1:3001`. If the workbench used a non-default port, pass the same value with `-Port`.
+The script queries only the exact root tasks `\LYJWorkBench-ReminderRunner` and the legacy `\LYJWorkBench-OutboundCheckin`, disables future triggers, stops either task if it is currently `Running`, re-queries it, and fails unless it is no longer running. It also fails while an LYJ Workbench server is still listening on `127.0.0.1:3001`. If the workbench used a non-default port, pass the same value with `-Port`.
 
 Do not copy data unless the script prints `Backup preparation complete`. This prevents SQLite writes while the copy is in progress.
 
 Copy the entire `%LOCALAPPDATA%\LYJWorkBench` directory to a protected local backup location. Keep the backup access restricted because it contains personal data and encrypted credential blobs. After the copy completes, re-enable the exact task if you disabled it, then resume the server:
 
 ```powershell
-Enable-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-OutboundCheckin'
+Enable-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-ReminderRunner'
 ```
 
 ## Restore on the same Windows account
@@ -151,4 +155,4 @@ Project files, `workbench.sqlite`, and `uploads` can be transferred. On the dest
 
 DPAPI secret blobs are bound to their Windows protection context. They cannot be reused by another Windows account, and copied blobs should not be relied on after a computer or account migration. Do not transfer the `secrets` directory as usable credentials; re-enter the DeepSeek API key and SMTP password under the destination Windows account, then run the explicit connection tests.
 
-Finally, preview and reinstall `\LYJWorkBench-OutboundCheckin` on the destination computer. A scheduled task stores absolute Node, project, and compiled-entry paths, so copying project files does not migrate a working task registration.
+Finally, use **同步系统计划** on the reminder page to reinstall `\LYJWorkBench-ReminderRunner` on the destination computer. A scheduled task stores absolute Node, project, and compiled-entry paths, so copying project files does not migrate a working task registration.

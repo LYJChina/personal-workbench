@@ -63,8 +63,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api", createReminderRouter(paths, {
     secretStore,
     channel: options.reminderChannel,
-    now: options.now
-    ,scheduler: options.reminderScheduler
+    now: options.now,
+    scheduler: options.reminderScheduler
   }));
   app.use("/api", createHolidayRouter(paths, { loader: options.holidayYearLoader, now: options.now }));
   app.use("/api", createSettingsRouter(paths, {

@@ -59,6 +59,9 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
         setReminders(reminderResult.items);
         setAttempts(attemptResult.items);
         setScheduler(status);
+        const selectedId = new URLSearchParams(window.location.search).get("selected");
+        const selected = reminderResult.items.find((item) => item.id === selectedId);
+        if (selected) setEditing(selected);
       })
       .catch((error: unknown) => active && setFeedback({ kind: "error", text: message(error) }))
       .finally(() => active && setLoading(false));

@@ -128,8 +128,8 @@ export const api = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   }),
-  testReminder: () => requestJson<ReminderTestResult>("/reminders/outbound-checkin/test", { method: "POST" })
-  ,listReminders: () => requestJson<{ items: GenericReminder[] }>("/reminders"),
+  testReminder: () => requestJson<ReminderTestResult>("/reminders/outbound-checkin/test", { method: "POST" }),
+  listReminders: () => requestJson<{ items: GenericReminder[] }>("/reminders"),
   createGenericReminder: (input: GenericReminderInput) => requestJson<GenericReminder>("/reminders", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
   }),
