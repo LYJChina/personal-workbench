@@ -72,21 +72,19 @@ function notConfigured(response: Response): void {
   response.status(400).json({ error: { message: "Required credentials are not configured", code: "NOT_CONFIGURED" } });
 }
 
-function rawAuthorityContainsUserinfo(value: string): boolean {
-  const authorityStart = value.indexOf("://");
-  if (authorityStart === -1) return false;
-  const remainder = value.slice(authorityStart + 3);
-  const authorityEnd = remainder.search(/[/?#]/);
-  const authority = authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
-  return authority.includes("@");
-}
-
 function isAllowedDeepSeekUrl(value: string, allowLoopbackHttp: boolean): boolean {
+  const scheme = value.startsWith("https://") ? "https://" : allowLoopbackHttp && value.startsWith("http://") ? "http://" : null;
+  if (!scheme || value.includes("\\")) return false;
+
   try {
     const url = new URL(value);
-    if (rawAuthorityContainsUserinfo(value) || url.username || url.password || url.search || url.hash || value.includes("?") || value.includes("#")) return false;
-    if (url.protocol === "https:") return true;
-    return allowLoopbackHttp && url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+    const remainder = value.slice(scheme.length);
+    const authorityEnd = remainder.search(/[/?#]/);
+    const authority = authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
+    if (!authority || authority.includes("@") || authority !== url.host) return false;
+    if (url.username || url.password || url.search || url.hash || value.includes("?") || value.includes("#")) return false;
+    if (scheme === "https://" && url.protocol === "https:") return true;
+    return scheme === "http://" && url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]");
   } catch {
     return false;
   }
@@ -174,7 +172,8 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
 
   router.put("/settings/deepseek", handle(async (request, response) => {
     const parsed = DeepSeekSettingsUpdateSchema.safeParse(request.body);
-    if (!parsed.success || !isAllowedDeepSeekUrl(parsed.data.baseUrl, Boolean(dependencies.allowLoopbackHttp))) return validationError(response);
+    if (!parsed.success) return validationError(response);
+    if (request.body?.baseUrl !== parsed.data.baseUrl || !isAllowedDeepSeekUrl(parsed.data.baseUrl, Boolean(dependencies.allowLoopbackHttp))) return validationError(response);
     const replacement = parsed.data.apiKey?.trim();
     if (replacement) await dependencies.secretStore.protectSecret(DEEPSEEK_SECRET_NAME, replacement);
     const configured = Boolean(replacement || await dependencies.secretStore.readSecret(DEEPSEEK_SECRET_NAME));

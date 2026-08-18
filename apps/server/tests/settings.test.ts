@@ -140,28 +140,34 @@ describe("secure settings API", () => {
   });
 
   it.each([
-    "https://embedded-user:embedded-password@api.deepseek.com/v1",
-    "https://api.deepseek.com/v1?destination=internal",
-    "https://api.deepseek.com/v1#fragment"
-  ])("rejects DeepSeek base URLs containing userinfo, query, or fragment: %s", async (baseUrl) => {
-    const response = await request(createApp({ dataDir: tempDir, secretStore })).put("/api/settings/deepseek").send({
+    { label: "canonical HTTPS origin and versioned path", baseUrl: "https://api.deepseek.com/v1", expectedStatus: 200 },
+    { label: "at sign in a normal path", baseUrl: "https://api.deepseek.com/teams/@production/v1", expectedStatus: 200 },
+    { label: "canonical HTTPS non-default port", baseUrl: "https://api.deepseek.com:8443/v1", expectedStatus: 200 },
+    { label: "canonical loopback HTTP test URL", baseUrl: "http://127.0.0.1:8000/v1", expectedStatus: 200 },
+    { label: "canonical bracketed loopback HTTP test URL", baseUrl: "http://[::1]:8000/v1", expectedStatus: 200 },
+    { label: "extra forward slashes before empty userinfo", baseUrl: "https:////@api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "extra forward slashes before host", baseUrl: "https:////api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "backslash separators", baseUrl: String.raw`https:\\api.deepseek.com\v1`, expectedStatus: 400 },
+    { label: "backslash in path", baseUrl: String.raw`https://api.deepseek.com\v1`, expectedStatus: 400 },
+    { label: "mixed slash and backslash scheme separators", baseUrl: String.raw`https:/\api.deepseek.com/v1`, expectedStatus: 400 },
+    { label: "empty userinfo", baseUrl: "https://@api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "empty userinfo with colon", baseUrl: "https://:@api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "non-empty userinfo", baseUrl: "https://embedded-user:embedded-password@api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "encoded userinfo", baseUrl: "https://%75ser@api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "query", baseUrl: "https://api.deepseek.com/v1?destination=internal", expectedStatus: 400 },
+    { label: "fragment", baseUrl: "https://api.deepseek.com/v1#fragment", expectedStatus: 400 },
+    { label: "leading whitespace before scheme", baseUrl: " https://api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "trailing whitespace after path", baseUrl: "https://api.deepseek.com/v1 ", expectedStatus: 400 },
+    { label: "uppercase scheme", baseUrl: "HTTPS://api.deepseek.com/v1", expectedStatus: 400 },
+    { label: "normalized default port", baseUrl: "https://api.deepseek.com:443/v1", expectedStatus: 400 },
+    { label: "normalized uppercase host", baseUrl: "https://API.DEEPSEEK.COM/v1", expectedStatus: 400 }
+  ])("enforces the canonical DeepSeek URL boundary for $label", async ({ baseUrl, expectedStatus }) => {
+    const response = await request(createApp({ dataDir: tempDir, secretStore, allowLoopbackHttp: true })).put("/api/settings/deepseek").send({
       baseUrl,
       model: "deepseek-chat"
     });
 
-    expect(response.status).toBe(400);
-  });
-
-  it.each([
-    "https://@api.deepseek.com/v1",
-    "https://:@api.deepseek.com/v1"
-  ])("rejects empty raw userinfo syntax in the DeepSeek base URL: %s", async (baseUrl) => {
-    const response = await request(createApp({ dataDir: tempDir, secretStore })).put("/api/settings/deepseek").send({
-      baseUrl,
-      model: "deepseek-chat"
-    });
-
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(expectedStatus);
   });
 
   it("does not follow a provider redirect to another target", async () => {

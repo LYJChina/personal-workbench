@@ -213,3 +213,52 @@ The initial sandboxed settings RED attempt was excluded from behavior evidence b
 - All DPAPI test blobs remain isolated in unique temporary directories removed by the existing `afterEach`; the focused suite also revalidated interruption rollback cleanup and exact current-user-only ACLs.
 - CurrentUser DPAPI verification still requires execution outside the restricted sandbox under the signed-in Windows profile. No weaker encryption or ACL fallback was introduced.
 - No real DeepSeek or SMTP credentials were used, and no external provider connection was attempted.
+
+## Fix Round 3 (2026-08-18)
+
+### Finding Addressed
+
+DeepSeek URL validation now enforces a canonical raw shape before trusting WHATWG parsing. Inputs must begin with the exact lowercase `https://` prefix, or `http://` only when the explicit loopback test exception is enabled; any backslash is rejected. The raw authority immediately following that prefix must be nonempty, contain no `@`, and equal the parsed `url.host` exactly. This rejects repaired extra-slash forms, slash/backslash variants, userinfo, default-port normalization, case normalization, and other alternate authority spellings while preserving versioned paths, safe `@` path segments, non-default ports, and bracketed IPv6 loopback.
+
+### RED Evidence
+
+- `pnpm --filter @workbench/server test -- settings.test.ts`
+  - Exit 1; 11 failed and 28 passed across 39 literal table cases and existing settings tests.
+  - WHATWG-repaired extra-forward-slash, backslash, and mixed-separator forms returned 200 instead of 400.
+  - Uppercase scheme, normalized default port, normalized uppercase host, and leading/trailing whitespace also returned 200 instead of the literal expected 400.
+  - Canonical `http://[::1]:8000/v1` returned 400 instead of 200 because Node exposes its parsed hostname as `[::1]`.
+
+The table's expected statuses are literal values; they are not derived from `URL` or the production validator. Existing empty, non-empty, and encoded userinfo cases already failed closed under the prior checks, while the newly added normalization cases demonstrated the remaining bypass.
+
+### GREEN and Verification Evidence
+
+- `pnpm --filter @workbench/server test -- settings.test.ts`
+  - Exit 0; 39 tests passed.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts settings.test.ts`
+  - Exit 0; 2 files and 45 tests passed.
+- `pnpm --filter @workbench/web test -- SettingsPage.test.tsx`
+  - Exit 0; 1 file and 12 tests passed.
+- `pnpm test`
+  - Exit 0.
+  - Server: 5 files and 58 tests passed.
+  - Web: 4 files and 22 tests passed.
+- `pnpm build`
+  - Exit 0; contracts/server type-check and web production build passed.
+- `pnpm check`
+  - Exit 0 for every workspace package.
+- `git diff --check`
+  - Exit 0; only Windows LF-to-CRLF notices were emitted.
+
+### Covering Tests and Security Reasoning
+
+- `enforces the canonical DeepSeek URL boundary` is table-driven and covers canonical HTTPS, versioned and `@` paths, a non-default port, IPv4 and bracketed IPv6 loopback HTTP, forward-slash overpopulation, backslash and mixed separators, empty/non-empty/encoded userinfo, query, fragment, surrounding whitespace, uppercase scheme/host, and a normalized default port.
+- Comparing the raw authority to `url.host` allows canonical ports and bracketed hosts while rejecting any authority spelling the parser would repair or normalize. Parsing remains necessary for structural validation, and parsed username/password/query/fragment checks remain defense in depth.
+- The save route compares the request's base URL with the schema-parsed value, so schema trimming cannot turn whitespace-surrounded raw input into an accepted canonical URL.
+- Production remains HTTPS-only. The HTTP branch is still gated by the existing injected test option and accepts only `127.0.0.1`, `localhost`, or bracketed `::1`.
+
+### Cleanup and Concerns
+
+- No DPAPI implementation or test was changed in this round; the combined suite revalidated all six CurrentUser encryption, ACL, rollback, and ambient-environment cases.
+- All settings tests continue removing their unique temporary data directories, and the controlled redirect test closes both loopback servers in `finally`.
+- CurrentUser DPAPI verification still requires execution outside the restricted sandbox under the signed-in Windows profile. No weaker encryption or ACL fallback was introduced.
+- No real DeepSeek or SMTP credentials were used, and no external provider connection was attempted.
