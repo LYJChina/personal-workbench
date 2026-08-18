@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS reminders (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS reminder_delivery_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reminder_id TEXT NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  error_category TEXT,
+  attempted_at TEXT NOT NULL,
+  UNIQUE(reminder_id, local_date)
+);
+
+CREATE INDEX IF NOT EXISTS reminder_delivery_attempts_status_idx
+  ON reminder_delivery_attempts(reminder_id, status, attempted_at DESC);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,

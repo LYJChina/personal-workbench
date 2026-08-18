@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc -p tsconfig.reminder.json",
     "test": "vitest run",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "reminder:run": "pnpm build --silent && node dist/reminder-entry.js"
   },
   "dependencies": {
     "@workbench/contracts": "workspace:*",

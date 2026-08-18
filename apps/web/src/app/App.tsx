@@ -5,6 +5,7 @@ import { EditableDashboard } from "../features/dashboard/EditableDashboard";
 import { AiOfficePage } from "../features/ai-office/AiOfficePage";
 import { DailyReportPage } from "../features/daily-report/DailyReportPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
+import { ReminderPage } from "../features/reminders/ReminderPage";
 import { api } from "../lib/api";
 import { Sidebar } from "./Sidebar";
 import { ThemeProvider } from "./ThemeProvider";
@@ -47,7 +48,7 @@ export function App() {
           <Route index element={<HomePage />} />
           <Route path="ai-office" element={<AiOfficePage />} />
           <Route path="ai-office/daily-report" element={<DailyReportPage />} />
-          <Route path="reminders" element={<Page title="提醒事项" />} />
+          <Route path="reminders" element={<ReminderPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

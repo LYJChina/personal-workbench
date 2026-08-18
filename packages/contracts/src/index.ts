@@ -118,6 +118,39 @@ export const DailyReportUpdateSchema = z.object({
   content: z.string().trim().min(1).max(50_000)
 });
 
+export const ReminderIdSchema = z.literal("outbound-checkin");
+export const ReminderUpdateSchema = z.object({
+  enabled: z.boolean(),
+  localTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+  recipient: z.string().trim().email().max(500),
+  subject: z.string().trim().min(1).max(500),
+  body: z.string().trim().min(1).max(20_000)
+});
+export const ReminderFailureCategorySchema = z.enum([
+  "not_configured",
+  "auth_failure",
+  "timeout",
+  "unreachable_host",
+  "unknown"
+]);
+export const ReminderAttemptSchema = z.object({
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  attemptedAt: z.string(),
+  category: ReminderFailureCategorySchema.optional()
+});
+export const ReminderSchema = ReminderUpdateSchema.omit({ recipient: true }).extend({
+  recipient: z.union([z.literal(""), z.string().trim().email().max(500)]),
+  id: ReminderIdSchema,
+  weekday: z.literal(1),
+  nextRun: z.string().nullable(),
+  lastSuccess: ReminderAttemptSchema.nullable(),
+  lastFailure: ReminderAttemptSchema.required({ category: true }).nullable()
+});
+export const ReminderTestResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("success"), message: z.string() }),
+  z.object({ status: z.literal("failure"), category: ReminderFailureCategorySchema, message: z.string() })
+]);
+
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type CustomField = z.infer<typeof CustomFieldSchema>;
@@ -139,3 +172,9 @@ export type ConnectionTestResult = z.infer<typeof ConnectionTestResultSchema>;
 export type DailyReportInput = z.infer<typeof DailyReportInputSchema>;
 export type DailyReport = z.infer<typeof DailyReportSchema>;
 export type DailyReportUpdate = z.infer<typeof DailyReportUpdateSchema>;
+export type ReminderId = z.infer<typeof ReminderIdSchema>;
+export type ReminderUpdate = z.infer<typeof ReminderUpdateSchema>;
+export type ReminderFailureCategory = z.infer<typeof ReminderFailureCategorySchema>;
+export type ReminderAttempt = z.infer<typeof ReminderAttemptSchema>;
+export type Reminder = z.infer<typeof ReminderSchema>;
+export type ReminderTestResult = z.infer<typeof ReminderTestResultSchema>;

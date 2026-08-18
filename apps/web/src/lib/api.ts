@@ -10,6 +10,9 @@ import type {
   NavigationItem,
   ProfileResponse,
   ProfileUpdate,
+  Reminder,
+  ReminderTestResult,
+  ReminderUpdate,
   SettingsResponse,
   Theme
 } from "@workbench/contracts";
@@ -77,5 +80,12 @@ export const api = {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content })
-  })
+  }),
+  getReminder: () => requestJson<Reminder>("/reminders/outbound-checkin"),
+  updateReminder: (input: ReminderUpdate) => requestJson<Reminder>("/reminders/outbound-checkin", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  }),
+  testReminder: () => requestJson<ReminderTestResult>("/reminders/outbound-checkin/test", { method: "POST" })
 };

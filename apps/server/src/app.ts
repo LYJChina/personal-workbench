@@ -7,6 +7,8 @@ import { createDailyReportRouter } from "./modules/daily-reports/daily-report.ro
 import { DeepSeekClient, type DailyReportGenerator } from "./modules/daily-reports/deepseek.client.js";
 import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectionTester } from "./modules/settings/settings.routes.js";
 import { WindowsDpapiSecretStore, type SecretStore } from "./platform/dpapi.js";
+import { createReminderRouter } from "./modules/reminders/reminder.routes.js";
+import type { NotificationChannel } from "./modules/reminders/notification-channel.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -16,6 +18,8 @@ export interface CreateAppOptions {
   mailConnectionTester?: MailConnectionTester;
   connectionTimeoutMs?: number;
   deepSeekClient?: DailyReportGenerator;
+  reminderChannel?: NotificationChannel;
+  now?: () => Date;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -36,6 +40,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
     secretStore,
     deepSeekClient,
     allowLoopbackHttp: options.allowLoopbackHttp
+  }));
+  app.use("/api", createReminderRouter(paths, {
+    secretStore,
+    channel: options.reminderChannel,
+    now: options.now
   }));
   app.use("/api", createSettingsRouter(paths, {
     secretStore,
