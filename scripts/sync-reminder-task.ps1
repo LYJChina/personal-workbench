@@ -26,7 +26,7 @@ $ResolvedSyncScriptPath = [System.IO.Path]::GetFullPath($PSCommandPath)
 $ResolvedWscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
 if (-not (Test-Path -LiteralPath $ResolvedWscriptPath -PathType Leaf)) { throw 'wscript.exe was not found.' }
 
-function Write-Status([bool]$Installed, [bool]$Synchronized, [string]$Message, [AllowNull()][string]$NextRun) {
+function Write-Status([bool]$Installed, [bool]$Synchronized, [string]$Message, [AllowNull()][object]$NextRun) {
     [pscustomobject]@{ installed = $Installed; synchronized = $Synchronized; taskName = $TaskName; message = $Message; nextRun = $NextRun } | ConvertTo-Json -Compress
 }
 

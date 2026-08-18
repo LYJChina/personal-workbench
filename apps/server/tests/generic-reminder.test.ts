@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { resolveAppPaths } from "../src/config/paths";
@@ -83,7 +83,11 @@ describe("generic reminder migration", () => {
   });
 
   it("exposes reminder CRUD, history and upcoming routes", async () => {
-    const app = createApp({ dataDir: tempDir, now: () => new Date("2026-08-18T00:00:00.000Z") });
+    const scheduler = {
+      status: vi.fn(),
+      sync: vi.fn().mockResolvedValue({ installed: true, synchronized: true, taskName: "LYJWorkBench-ReminderRunner", message: "已同步" })
+    };
+    const app = createApp({ dataDir: tempDir, now: () => new Date("2026-08-18T00:00:00.000Z"), reminderScheduler: scheduler });
     const input = {
       name: "提交报销", enabled: true, lifecycle: "once", scheduleType: "once",
       startDate: "2026-08-18", localTime: "09:30", weekdays: [], monthDay: null,
@@ -99,6 +103,24 @@ describe("generic reminder migration", () => {
     expect((await request(app).get("/api/dashboard/upcoming-reminders")).body.items[0]).toHaveProperty("nextRun");
     expect((await request(app).get("/api/reminder-attempts")).body.items).toEqual([]);
     expect((await request(app).delete(`/api/reminders/${created.body.id}`)).status).toBe(204);
+    expect(scheduler.sync).toHaveBeenCalledTimes(3);
     expect((await request(app).get(`/api/reminders/${created.body.id}`)).status).toBe(404);
+  });
+
+  it("keeps a saved reminder when automatic task synchronization fails", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const scheduler = { status: vi.fn(), sync: vi.fn().mockRejectedValue(new Error("task unavailable")) };
+    const app = createApp({ dataDir: tempDir, reminderScheduler: scheduler });
+    const response = await request(app).post("/api/reminders").send({
+      name: "静默保存", enabled: true, lifecycle: "once", scheduleType: "once",
+      startDate: "2026-08-19", localTime: "09:00", weekdays: [], monthDay: null,
+      totalOccurrences: null, recipient: "me@example.com", subject: "提醒", body: "正文"
+    });
+
+    expect(response.status).toBe(201);
+    expect(scheduler.sync).toHaveBeenCalledTimes(1);
+    expect(errorLog).toHaveBeenCalledWith("Reminder scheduler synchronization failed");
+    expect((await request(app).get(`/api/reminders/${response.body.id}`)).body.name).toBe("静默保存");
+    errorLog.mockRestore();
   });
 });

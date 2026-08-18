@@ -110,6 +110,40 @@ describe("one-click reminder scheduler", () => {
     });
   });
 
+  it("removes the exact task and returns a null wake-up when nothing is pending", async () => {
+    const projectRoot = join(tempDir, "empty schedule");
+    const entryPath = join(projectRoot, "apps", "server", "dist", "reminder-entry.cjs");
+    const launcherPath = join(projectRoot, "scripts", "run-reminders-hidden.vbs");
+    const wrapper = join(tempDir, "controlled-empty.ps1");
+    const removalMarker = join(tempDir, "removed.txt");
+    const script = resolve(process.cwd(), "../../scripts/sync-reminder-task.ps1");
+    await mkdir(join(projectRoot, "apps", "server", "dist"), { recursive: true });
+    await mkdir(join(projectRoot, "scripts"), { recursive: true });
+    await writeFile(entryPath, `if (process.argv[2] === "--next-wake") console.log(JSON.stringify({ nextRun: null }));`);
+    await writeFile(launcherPath, "WScript.Quit 0");
+    await writeFile(wrapper, `
+      param([string]$Script, [string]$ProjectRoot, [string]$NodePath, [string]$EntryPath)
+      $global:LYJTaskExists = $true
+      function Get-ScheduledTask {
+        param($TaskPath, $TaskName, $ErrorAction)
+        if ($TaskName -eq 'LYJWorkBench-OutboundCheckin' -or -not $global:LYJTaskExists) { return $null }
+        return [pscustomobject]@{ TaskPath = '\\'; TaskName = $TaskName }
+      }
+      function Unregister-ScheduledTask { param($TaskPath, $TaskName, $Confirm) $global:LYJTaskExists = $false; Set-Content -LiteralPath $env:LYJ_REMOVED -Value ($TaskPath + $TaskName) }
+      & $Script -ProjectRoot $ProjectRoot -NodePath $NodePath -ReminderEntryPath $EntryPath -Confirm:$false
+    `);
+
+    const result = await execFileAsync("powershell", [
+      "-NoProfile", "-File", wrapper, "-Script", script, "-ProjectRoot", projectRoot,
+      "-NodePath", process.execPath, "-EntryPath", entryPath
+    ], { env: { ...process.env, LYJ_REMOVED: removalMarker } });
+    expect((await readFile(removalMarker, "utf8")).trim()).toBe("\\LYJWorkBench-ReminderRunner");
+    expect(JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "{}")).toEqual({
+      installed: false, synchronized: true, taskName: "LYJWorkBench-ReminderRunner",
+      message: "No pending reminders", nextRun: null
+    });
+  });
+
   it("selects the earliest future reminder without polling", () => {
     const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
     const calendar = new HolidayRepository(database);
