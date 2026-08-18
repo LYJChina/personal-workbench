@@ -11,10 +11,14 @@
   },
   "dependencies": {
     "@workbench/contracts": "workspace:*",
-    "express": "^5.1.0"
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.1.0",
+    "multer": "^2.2.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.1",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.13.4",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.1.0",
