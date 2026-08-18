@@ -1,4 +1,16 @@
-import type { DashboardLayout, NavigationItem, ProfileResponse, ProfileUpdate, Theme } from "@workbench/contracts";
+import type {
+  ConnectionTestResult,
+  DashboardLayout,
+  DeepSeekSettings,
+  DeepSeekSettingsUpdate,
+  MailSettings,
+  MailSettingsUpdate,
+  NavigationItem,
+  ProfileResponse,
+  ProfileUpdate,
+  SettingsResponse,
+  Theme
+} from "@workbench/contracts";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, init);
@@ -38,5 +50,18 @@ export const api = {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ theme })
-  })
+  }),
+  getSettings: () => requestJson<SettingsResponse>("/settings"),
+  updateDeepSeekSettings: (settings: DeepSeekSettingsUpdate) => requestJson<DeepSeekSettings>("/settings/deepseek", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings)
+  }),
+  updateMailSettings: (settings: MailSettingsUpdate) => requestJson<MailSettings>("/settings/mail", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings)
+  }),
+  testDeepSeekConnection: () => requestJson<ConnectionTestResult>("/settings/deepseek/test", { method: "POST" }),
+  testMailConnection: () => requestJson<ConnectionTestResult>("/settings/mail/test", { method: "POST" })
 };

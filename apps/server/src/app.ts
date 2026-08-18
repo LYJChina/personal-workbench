@@ -3,14 +3,22 @@ import { HealthResponseSchema } from "@workbench/contracts";
 import { resolveAppPaths } from "./config/paths.js";
 import { createProfileRouter, isPhotoUploadLimitError } from "./modules/profile/profile.routes.js";
 import { createPreferencesRouter } from "./modules/preferences/preferences.routes.js";
+import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectionTester } from "./modules/settings/settings.routes.js";
+import { WindowsDpapiSecretStore, type SecretStore } from "./platform/dpapi.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
+  secretStore?: SecretStore;
+  allowLoopbackHttp?: boolean;
+  deepSeekConnectionTester?: DeepSeekConnectionTester;
+  mailConnectionTester?: MailConnectionTester;
+  connectionTimeoutMs?: number;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   const paths = resolveAppPaths(options);
+  const secretStore = options.secretStore ?? new WindowsDpapiSecretStore(paths.secretsDir);
 
   app.use(express.json());
 
@@ -20,6 +28,13 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   app.use("/api", createProfileRouter(paths));
   app.use("/api", createPreferencesRouter(paths));
+  app.use("/api", createSettingsRouter(paths, {
+    secretStore,
+    allowLoopbackHttp: options.allowLoopbackHttp,
+    deepSeekConnectionTester: options.deepSeekConnectionTester,
+    mailConnectionTester: options.mailConnectionTester,
+    connectionTimeoutMs: options.connectionTimeoutMs
+  }));
 
   app.use((_request, response) => {
     response.status(404).json({ error: { message: "Not Found", code: "NOT_FOUND" } });

@@ -67,3 +67,26 @@ main {
   list-style: none;
   padding: 0;
 }
+
+.settings-page {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 52rem;
+}
+
+.settings-page > section {
+  background: var(--surface-background);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.settings-page form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.settings-page label {
+  display: grid;
+  gap: 0.25rem;
+}

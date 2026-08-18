@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Outlet, Route, Routes } from "react-router-dom";
 import type { DashboardLayout } from "@workbench/contracts";
 import { EditableDashboard } from "../features/dashboard/EditableDashboard";
+import { SettingsPage } from "../features/settings/SettingsPage";
 import { api } from "../lib/api";
 import { Sidebar } from "./Sidebar";
-import { ThemeProvider, useTheme } from "./ThemeProvider";
+import { ThemeProvider } from "./ThemeProvider";
 
 function Shell() {
   return (
@@ -30,11 +31,6 @@ function HomePage() {
   }
 
   return <>{error && <p role="alert">{error}</p>}{layout.length > 0 && <EditableDashboard initialLayout={layout} onSave={saveLayout} />}</>;
-}
-
-function SettingsPage() {
-  const { theme, setTheme } = useTheme();
-  return <section><h2>设置</h2><label>主题 <select value={theme} onChange={(event) => void setTheme(event.target.value as typeof theme)}><option value="light">浅色</option><option value="dark">深色</option></select></label></section>;
 }
 
 function Page({ title }: { title: string }) {

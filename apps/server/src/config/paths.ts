@@ -4,6 +4,7 @@ export interface AppPaths {
   dataDir: string;
   databasePath: string;
   uploadsDir: string;
+  secretsDir: string;
 }
 
 export function resolveAppPaths(options: { dataDir?: string } = {}): AppPaths {
@@ -13,6 +14,7 @@ export function resolveAppPaths(options: { dataDir?: string } = {}): AppPaths {
   return {
     dataDir,
     databasePath: join(dataDir, "workbench.sqlite"),
-    uploadsDir
+    uploadsDir,
+    secretsDir: join(dataDir, "secrets")
   };
 }
