@@ -9,11 +9,13 @@ import type { NotificationChannel } from "./notification-channel.js";
 import { ReminderRepository } from "./reminder.repository.js";
 import { GenericReminderRepository } from "./generic-reminder.repository.js";
 import { HolidayRepository } from "../calendar/holiday.repository.js";
+import { ReminderSchedulerService, type ReminderScheduler } from "./reminder-scheduler.js";
 
 export interface ReminderRouterDependencies {
   secretStore: SecretStore;
   channel?: NotificationChannel;
   now?: () => Date;
+  scheduler?: ReminderScheduler;
 }
 
 function errorResponse(response: Response, status: number, message: string, code: string): void {
@@ -77,6 +79,15 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
   router.get("/reminders", (_request, response) => {
     response.json({ items: genericFor(response).list(now()) });
   });
+  const scheduler = dependencies.scheduler ?? ReminderSchedulerService.fromCurrentModule();
+
+  router.get("/reminder-scheduler/status", handle(async (_request, response) => {
+    response.json(await scheduler.status());
+  }));
+
+  router.post("/reminder-scheduler/sync", handle(async (_request, response) => {
+    response.json(await scheduler.sync());
+  }));
 
   router.post("/reminders", (request, response) => {
     const parsed = GenericReminderInputSchema.safeParse(request.body);

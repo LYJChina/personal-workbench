@@ -6,6 +6,9 @@ import { ReminderRepository } from "./modules/reminders/reminder.repository.js";
 import { runDueReminders } from "./modules/reminders/reminder.runner.js";
 import { SettingsRepository } from "./modules/settings/settings.repository.js";
 import { WindowsDpapiSecretStore } from "./platform/dpapi.js";
+import { HolidayRepository } from "./modules/calendar/holiday.repository.js";
+import { GenericReminderRepository } from "./modules/reminders/generic-reminder.repository.js";
+import { runGenericReminders } from "./modules/reminders/generic-reminder.runner.js";
 
 export function parseReminderArguments(arguments_: string[]): "outbound-checkin" {
   if (arguments_.length === 2 && arguments_[0] === "--reminder" && arguments_[1] === "outbound-checkin") return "outbound-checkin";
@@ -30,8 +33,9 @@ export function applySchedulerSynchronizationArguments(
 
 export async function runReminderEntry(arguments_: string[]): Promise<number> {
   try {
+    const runDue = arguments_.length === 1 && arguments_[0] === "--run-due";
     const schedulerSynchronization = arguments_.length === 4 && arguments_[2] === "--scheduler-synchronized-time";
-    if (!schedulerSynchronization) parseReminderArguments(arguments_);
+    if (!schedulerSynchronization && !runDue) parseReminderArguments(arguments_);
     const paths = resolveAppPaths();
     const database = openDatabase(paths);
     try {
@@ -46,6 +50,14 @@ export async function runReminderEntry(arguments_: string[]): Promise<number> {
         secretStore: new WindowsDpapiSecretStore(paths.secretsDir),
         loadSettings: (configured) => settingsRepository.getMailSettings(configured)
       });
+      if (runDue) {
+        const calendar = new HolidayRepository(database);
+        const genericRepository = new GenericReminderRepository(database, calendar);
+        const genericSummary = await runGenericReminders(new Date(), { repository: genericRepository, calendar, channel });
+        if (genericSummary.failed > 0) return 1;
+        console.log(genericSummary.sent > 0 ? "Reminder delivered" : "No reminder due");
+        return 0;
+      }
       const summary = await runDueReminders(new Date(), { repository, channel });
       if (summary.failed > 0) {
         console.error("Reminder delivery failed");
