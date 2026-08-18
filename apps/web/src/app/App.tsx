@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Outlet, Route, Routes } from "react-router-dom";
 import type { DashboardLayout } from "@workbench/contracts";
 import { EditableDashboard } from "../features/dashboard/EditableDashboard";
+import { AiOfficePage } from "../features/ai-office/AiOfficePage";
+import { DailyReportPage } from "../features/daily-report/DailyReportPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { api } from "../lib/api";
 import { Sidebar } from "./Sidebar";
@@ -43,8 +45,8 @@ export function App() {
       <Routes>
         <Route element={<Shell />}>
           <Route index element={<HomePage />} />
-          <Route path="ai-office" element={<Page title="AI 办公" />} />
-          <Route path="ai-office/daily-report" element={<Page title="每日报告" />} />
+          <Route path="ai-office" element={<AiOfficePage />} />
+          <Route path="ai-office/daily-report" element={<DailyReportPage />} />
           <Route path="reminders" element={<Page title="提醒事项" />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

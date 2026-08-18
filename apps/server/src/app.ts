@@ -3,6 +3,8 @@ import { HealthResponseSchema } from "@workbench/contracts";
 import { resolveAppPaths } from "./config/paths.js";
 import { createProfileRouter, isPhotoUploadLimitError } from "./modules/profile/profile.routes.js";
 import { createPreferencesRouter } from "./modules/preferences/preferences.routes.js";
+import { createDailyReportRouter } from "./modules/daily-reports/daily-report.routes.js";
+import { DeepSeekClient, type DailyReportGenerator } from "./modules/daily-reports/deepseek.client.js";
 import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectionTester } from "./modules/settings/settings.routes.js";
 import { WindowsDpapiSecretStore, type SecretStore } from "./platform/dpapi.js";
 
@@ -13,12 +15,14 @@ export interface CreateAppOptions {
   deepSeekConnectionTester?: DeepSeekConnectionTester;
   mailConnectionTester?: MailConnectionTester;
   connectionTimeoutMs?: number;
+  deepSeekClient?: DailyReportGenerator;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   const paths = resolveAppPaths(options);
   const secretStore = options.secretStore ?? new WindowsDpapiSecretStore(paths.secretsDir);
+  const deepSeekClient = options.deepSeekClient ?? new DeepSeekClient();
 
   app.use(express.json());
 
@@ -28,6 +32,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   app.use("/api", createProfileRouter(paths));
   app.use("/api", createPreferencesRouter(paths));
+  app.use("/api", createDailyReportRouter(paths, {
+    secretStore,
+    deepSeekClient,
+    allowLoopbackHttp: options.allowLoopbackHttp
+  }));
   app.use("/api", createSettingsRouter(paths, {
     secretStore,
     allowLoopbackHttp: options.allowLoopbackHttp,

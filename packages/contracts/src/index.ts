@@ -97,6 +97,27 @@ export const ConnectionTestResultSchema = z.object({
   message: z.string()
 });
 
+export const DailyReportInputSchema = z.object({
+  completed: z.string().trim().max(20_000),
+  risks: z.string().trim().max(20_000)
+}).refine((input) => Boolean(input.completed || input.risks), {
+  message: "At least one daily report section is required"
+});
+
+export const DailyReportSchema = z.object({
+  id: z.number().int().positive(),
+  completed: z.string(),
+  risks: z.string(),
+  content: z.string(),
+  model: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const DailyReportUpdateSchema = z.object({
+  content: z.string().trim().min(1).max(50_000)
+});
+
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type CustomField = z.infer<typeof CustomFieldSchema>;
@@ -115,3 +136,6 @@ export type MailSettingsUpdate = z.infer<typeof MailSettingsUpdateSchema>;
 export type SettingsResponse = z.infer<typeof SettingsResponseSchema>;
 export type ConnectionTestStatus = z.infer<typeof ConnectionTestStatusSchema>;
 export type ConnectionTestResult = z.infer<typeof ConnectionTestResultSchema>;
+export type DailyReportInput = z.infer<typeof DailyReportInputSchema>;
+export type DailyReport = z.infer<typeof DailyReportSchema>;
+export type DailyReportUpdate = z.infer<typeof DailyReportUpdateSchema>;

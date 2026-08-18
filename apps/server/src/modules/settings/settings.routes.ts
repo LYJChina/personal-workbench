@@ -72,7 +72,7 @@ function notConfigured(response: Response): void {
   response.status(400).json({ error: { message: "Required credentials are not configured", code: "NOT_CONFIGURED" } });
 }
 
-function isAllowedDeepSeekUrl(value: string, allowLoopbackHttp: boolean): boolean {
+export function isAllowedDeepSeekUrl(value: string, allowLoopbackHttp: boolean): boolean {
   const scheme = value.startsWith("https://") ? "https://" : allowLoopbackHttp && value.startsWith("http://") ? "http://" : null;
   if (!scheme || value.includes("\\")) return false;
 

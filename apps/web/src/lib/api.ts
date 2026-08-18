@@ -1,6 +1,8 @@
 import type {
   ConnectionTestResult,
   DashboardLayout,
+  DailyReport,
+  DailyReportInput,
   DeepSeekSettings,
   DeepSeekSettingsUpdate,
   MailSettings,
@@ -63,5 +65,17 @@ export const api = {
     body: JSON.stringify(settings)
   }),
   testDeepSeekConnection: () => requestJson<ConnectionTestResult>("/settings/deepseek/test", { method: "POST" }),
-  testMailConnection: () => requestJson<ConnectionTestResult>("/settings/mail/test", { method: "POST" })
+  testMailConnection: () => requestJson<ConnectionTestResult>("/settings/mail/test", { method: "POST" }),
+  generateDailyReport: (input: DailyReportInput) => requestJson<DailyReport>("/daily-reports/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  }),
+  getDailyReports: () => requestJson<DailyReport[]>("/daily-reports"),
+  getDailyReport: (id: number) => requestJson<DailyReport>(`/daily-reports/${id}`),
+  updateDailyReport: (id: number, content: string) => requestJson<DailyReport>(`/daily-reports/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content })
+  })
 };
