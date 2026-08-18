@@ -161,3 +161,55 @@ The initial sandboxed settings RED attempt was excluded from TDD evidence becaus
 - Plaintext test values still travel to PowerShell only through standard input. Failure-point metadata contains no secret and is passed separately through the child environment.
 - CurrentUser DPAPI verification still requires execution outside the restricted sandbox under the signed-in Windows profile. No weaker encryption or ACL fallback was introduced.
 - No real DeepSeek or SMTP credentials were used, and no external provider connection was attempted.
+
+## Fix Round 2 (2026-08-18)
+
+### Findings Addressed
+
+1. DeepSeek validation now inspects the raw URL authority for the userinfo delimiter. This closes the WHATWG URL normalization gap where `https://@api.deepseek.com/v1` and `https://:@api.deepseek.com/v1` produce empty `username` and `password` properties. The check is limited to the authority, so an `@` in a legitimate path is not confused with credentials. Existing parsed username/password checks continue to reject encoded or non-empty userinfo variants.
+2. Every DPAPI protect subprocess now receives `LYJ_WORKBENCH_DPAPI_FAILURE_POINT` explicitly from the store's internal option, defaulting to an empty string. An ambient parent-process variable can no longer activate the test-only PowerShell failure seam on the normal production path.
+
+### RED Evidence
+
+- `pnpm --filter @workbench/server test -- settings.test.ts`
+  - Exit 1; 2 failed and 21 passed.
+  - Both exact empty-userinfo forms returned 200 instead of 400: `https://@api.deepseek.com/v1` and `https://:@api.deepseek.com/v1`.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts`
+  - Exit 1; 1 failed and 5 passed.
+  - With the parent environment set to `before_final_target_acl`, a normal `WindowsDpapiSecretStore` save failed with the sanitized `Windows DPAPI operation failed` error, proving the ambient variable reached the child.
+
+The initial sandboxed settings RED attempt was excluded from behavior evidence because Windows returned `EPERM` before Vitest could collect tests. The identical command outside the sandbox produced the two expected assertion failures.
+
+### GREEN and Verification Evidence
+
+- `pnpm --filter @workbench/server test -- settings.test.ts`
+  - Exit 0; 23 tests passed.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts`
+  - Exit 0; 6 tests passed.
+- `pnpm --filter @workbench/server test -- dpapi.test.ts settings.test.ts`
+  - Exit 0; 2 files and 29 tests passed.
+- `pnpm --filter @workbench/web test -- SettingsPage.test.tsx`
+  - Exit 0; 1 file and 12 tests passed.
+- `pnpm test`
+  - Exit 0.
+  - Server: 5 files and 42 tests passed.
+  - Web: 4 files and 22 tests passed.
+- `pnpm build`
+  - Exit 0; contracts/server type-check and web production build passed.
+- `pnpm check`
+  - Exit 0 for every workspace package.
+- `git diff --check`
+  - Exit 0; only Windows LF-to-CRLF notices were emitted.
+
+### Covering Tests and Security Reasoning
+
+- `rejects empty raw userinfo syntax in the DeepSeek base URL` covers both normalized-empty forms verbatim. The validator extracts only the raw authority between `://` and the first path, query, or fragment delimiter, then rejects any `@`; parsed username/password validation remains defense in depth for non-empty and encoded userinfo.
+- `ignores an ambient DPAPI failure point on the normal production path` sets the parent variable to a real injected failure point, constructs the store without test options, successfully protects and reads the disposable secret, and restores the original parent environment in `finally`.
+- The PowerShell command line remains fixed and secret-free. The new child environment value is either an internal enum value used by controlled tests or an empty string; it never contains plaintext secret material.
+
+### Cleanup and Concerns
+
+- The ambient-variable test restores the exact prior environment state in `finally`, including deleting the variable when it was originally absent.
+- All DPAPI test blobs remain isolated in unique temporary directories removed by the existing `afterEach`; the focused suite also revalidated interruption rollback cleanup and exact current-user-only ACLs.
+- CurrentUser DPAPI verification still requires execution outside the restricted sandbox under the signed-in Windows profile. No weaker encryption or ACL fallback was introduced.
+- No real DeepSeek or SMTP credentials were used, and no external provider connection was attempted.

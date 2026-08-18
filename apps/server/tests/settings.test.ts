@@ -152,6 +152,18 @@ describe("secure settings API", () => {
     expect(response.status).toBe(400);
   });
 
+  it.each([
+    "https://@api.deepseek.com/v1",
+    "https://:@api.deepseek.com/v1"
+  ])("rejects empty raw userinfo syntax in the DeepSeek base URL: %s", async (baseUrl) => {
+    const response = await request(createApp({ dataDir: tempDir, secretStore })).put("/api/settings/deepseek").send({
+      baseUrl,
+      model: "deepseek-chat"
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it("does not follow a provider redirect to another target", async () => {
     let targetRequests = 0;
     const target = createServer((_request, response) => {

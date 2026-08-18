@@ -76,6 +76,21 @@ describeOnWindows("Windows DPAPI secret store", () => {
     await expect(store.readSecret("unknown-secret")).rejects.toThrow("Unsupported secret name");
   });
 
+  it("ignores an ambient DPAPI failure point on the normal production path", async () => {
+    const previousFailurePoint = process.env.LYJ_WORKBENCH_DPAPI_FAILURE_POINT;
+    process.env.LYJ_WORKBENCH_DPAPI_FAILURE_POINT = "before_final_target_acl";
+
+    try {
+      const store = new WindowsDpapiSecretStore(join(tempDir, "secrets"));
+      await store.protectSecret(secretName, "ambient environment must not inject failure");
+
+      expect(await store.readSecret(secretName)).toBe("ambient environment must not inject failure");
+    } finally {
+      if (previousFailurePoint === undefined) delete process.env.LYJ_WORKBENCH_DPAPI_FAILURE_POINT;
+      else process.env.LYJ_WORKBENCH_DPAPI_FAILURE_POINT = previousFailurePoint;
+    }
+  });
+
   it("restores a current-user-only ACL when replacing an existing blob", async () => {
     const blobPath = join(tempDir, "secrets", `${secretName}.bin`);
     const store = new WindowsDpapiSecretStore(join(tempDir, "secrets"));

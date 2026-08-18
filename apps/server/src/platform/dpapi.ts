@@ -155,7 +155,9 @@ export class WindowsDpapiSecretStore implements SecretStore {
     validateSecretName(name);
     const bytes = Buffer.from(plaintext, "utf8");
     try {
-      await runPowerShell(protectScript, join(this.secretsDir, `${name}.bin`), bytes, this.options.failurePoint ? { LYJ_WORKBENCH_DPAPI_FAILURE_POINT: this.options.failurePoint } : {});
+      await runPowerShell(protectScript, join(this.secretsDir, `${name}.bin`), bytes, {
+        LYJ_WORKBENCH_DPAPI_FAILURE_POINT: this.options.failurePoint ?? ""
+      });
     } finally {
       bytes.fill(0);
     }

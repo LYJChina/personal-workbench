@@ -72,10 +72,19 @@ function notConfigured(response: Response): void {
   response.status(400).json({ error: { message: "Required credentials are not configured", code: "NOT_CONFIGURED" } });
 }
 
+function rawAuthorityContainsUserinfo(value: string): boolean {
+  const authorityStart = value.indexOf("://");
+  if (authorityStart === -1) return false;
+  const remainder = value.slice(authorityStart + 3);
+  const authorityEnd = remainder.search(/[/?#]/);
+  const authority = authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
+  return authority.includes("@");
+}
+
 function isAllowedDeepSeekUrl(value: string, allowLoopbackHttp: boolean): boolean {
   try {
     const url = new URL(value);
-    if (url.username || url.password || url.search || url.hash || value.includes("?") || value.includes("#")) return false;
+    if (rawAuthorityContainsUserinfo(value) || url.username || url.password || url.search || url.hash || value.includes("?") || value.includes("#")) return false;
     if (url.protocol === "https:") return true;
     return allowLoopbackHttp && url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
   } catch {
