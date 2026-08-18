@@ -65,6 +65,10 @@ describe("complete application navigation", () => {
 
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
     expect(await screen.findByRole("heading", { name: "AI 办公" })).toBeVisible();
+    expect(screen.queryByText("你的日常办公助手")).not.toBeInTheDocument();
+    expect(screen.queryByText("本地工作台")).not.toBeInTheDocument();
+    expect(screen.getByText("数据仅保存在此电脑")).toBeVisible();
+    expect(screen.getByRole("complementary", { name: "可用工具说明" })).toBeVisible();
     await user.click(screen.getByRole("link", { name: "AI 润色" }));
     expect(await screen.findByRole("heading", { name: "AI 润色" })).toBeVisible();
     expect(screen.getByLabelText("今日完成")).toBeVisible();

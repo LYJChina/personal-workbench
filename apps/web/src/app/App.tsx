@@ -19,8 +19,7 @@ function Shell() {
       <a className="skip-link" href="#main-content">跳到主要内容</a>
       <Sidebar />
       <div className="app-main">
-        <header className="topbar">
-          <div className="topbar-context"><span className="status-dot" />本地工作台</div>
+        <header className="topbar" aria-label="本地数据状态">
           <div className="privacy-badge"><Icon name="lock" size={15} /> 数据仅保存在此电脑</div>
         </header>
         <main id="main-content"><Outlet /></main>
