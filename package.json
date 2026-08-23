@@ -9,7 +9,7 @@
     "test": "pnpm -r test",
     "check": "pnpm -r check",
     "prelocal:start": "node scripts/retire-legacy-reminder-tasks.mjs",
-    "local:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1"
+    "local:start": "node scripts/start-local.mjs"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
