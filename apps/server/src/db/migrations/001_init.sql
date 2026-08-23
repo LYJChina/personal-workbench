@@ -131,6 +131,30 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS vault_metadata (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  salt BLOB NOT NULL CHECK (typeof(salt) = 'blob' AND length(salt) = 16),
+  verifier_nonce BLOB NOT NULL CHECK (typeof(verifier_nonce) = 'blob' AND length(verifier_nonce) = 12),
+  verifier_ciphertext BLOB NOT NULL CHECK (typeof(verifier_ciphertext) = 'blob' AND length(verifier_ciphertext) = 31),
+  verifier_tag BLOB NOT NULL CHECK (typeof(verifier_tag) = 'blob' AND length(verifier_tag) = 16),
+  scrypt_n INTEGER NOT NULL CHECK (scrypt_n BETWEEN 2 AND 131072 AND (scrypt_n & (scrypt_n - 1)) = 0),
+  scrypt_r INTEGER NOT NULL CHECK (scrypt_r BETWEEN 1 AND 16),
+  scrypt_p INTEGER NOT NULL CHECK (scrypt_p BETWEEN 1 AND 4),
+  scrypt_maxmem INTEGER NOT NULL CHECK (
+    scrypt_maxmem BETWEEN 16777216 AND 268435456
+    AND scrypt_maxmem >= (128 * scrypt_n * scrypt_r) + (128 * scrypt_r * scrypt_p) + 1048576
+  ),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS vault_secrets (
+  name TEXT PRIMARY KEY CHECK (length(trim(name)) > 0),
+  nonce BLOB NOT NULL CHECK (typeof(nonce) = 'blob' AND length(nonce) = 12),
+  ciphertext BLOB NOT NULL CHECK (typeof(ciphertext) = 'blob' AND length(ciphertext) > 0),
+  auth_tag BLOB NOT NULL CHECK (typeof(auth_tag) = 'blob' AND length(auth_tag) = 16),
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 INSERT OR IGNORE INTO profile (id) VALUES (1);
 
 COMMIT;

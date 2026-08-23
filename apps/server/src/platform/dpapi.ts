@@ -2,11 +2,7 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
-
-export interface SecretStore {
-  protectSecret(name: string, plaintext: string): Promise<void>;
-  readSecret(name: string): Promise<string | null>;
-}
+import type { SecretStore } from "./secret-store.js";
 
 const allowedSecretNames = new Set(["deepseek-api-key", "smtp-password", "dpapi-test-secret"]);
 

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { buildAiPolishMessages, buildSystemPromptMessages } from "../src/modules/ai-polish/ai-polish.prompt";
 import type { AiPolishGenerationInput, AiPolishGenerator, AiSystemPromptGenerationInput } from "../src/modules/ai-polish/ai-polish.client";
-import type { SecretStore } from "../src/platform/dpapi";
+import type { SecretStore } from "../src/platform/secret-store";
 import { openDatabase } from "../src/db/database";
 import { resolveAppPaths } from "../src/config/paths";
 

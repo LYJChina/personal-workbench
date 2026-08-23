@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { AiChatInputSchema } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
-import type { SecretStore } from "../../platform/dpapi.js";
+import type { SecretStore } from "../../platform/secret-store.js";
 import { isAllowedDeepSeekUrl } from "../settings/settings.routes.js";
 import { SettingsRepository } from "../settings/settings.repository.js";
 import { AiChatClientError, type AiChatGenerator, type AiChatContextMessage } from "./ai-chat.client.js";

@@ -12,7 +12,7 @@ import {
 import nodemailer from "nodemailer";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
-import type { SecretStore } from "../../platform/dpapi.js";
+import type { SecretStore } from "../../platform/secret-store.js";
 import { SettingsRepository } from "./settings.repository.js";
 
 const DEEPSEEK_SECRET_NAME = "deepseek-api-key";

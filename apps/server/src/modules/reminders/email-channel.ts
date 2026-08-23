@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import type { MailSettings, ReminderFailureCategory } from "@workbench/contracts";
-import type { SecretStore } from "../../platform/dpapi.js";
+import type { SecretStore } from "../../platform/secret-store.js";
 import type { DeliveryResult, NotificationChannel, NotificationMessage } from "./notification-channel.js";
 
 const smtpSecretName = "smtp-password";

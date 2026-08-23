@@ -4,7 +4,7 @@ import { join } from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
-import type { SecretStore } from "../src/platform/dpapi";
+import type { SecretStore } from "../src/platform/secret-store";
 
 class EmptySecretStore implements SecretStore {
   public async protectSecret(): Promise<void> {}

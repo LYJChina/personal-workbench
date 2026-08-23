@@ -7,7 +7,7 @@ import { openDatabase } from "../src/db/database";
 import { resolveAppPaths } from "../src/config/paths";
 import { AiChatRepository } from "../src/modules/ai-chat/ai-chat.repository";
 import { AiChatClient, type AiChatGenerationInput, type AiChatGenerator } from "../src/modules/ai-chat/ai-chat.client";
-import type { SecretStore } from "../src/platform/dpapi";
+import type { SecretStore } from "../src/platform/secret-store";
 import { createApp } from "../src/app";
 
 class MemorySecretStore implements SecretStore {

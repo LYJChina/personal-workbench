@@ -9,7 +9,7 @@ import { openDatabase } from "../src/db/database";
 import { EmailNotificationChannel, type MailTransportFactory } from "../src/modules/reminders/email-channel";
 import type { DeliveryResult, NotificationChannel, NotificationMessage } from "../src/modules/reminders/notification-channel";
 import { ReminderRepository } from "../src/modules/reminders/reminder.repository";
-import type { SecretStore } from "../src/platform/dpapi";
+import type { SecretStore } from "../src/platform/secret-store";
 
 const mondayAtNine = new Date("2026-08-24T09:00:00+08:00");
 

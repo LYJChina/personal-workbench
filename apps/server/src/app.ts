@@ -6,7 +6,8 @@ import { createPreferencesRouter } from "./modules/preferences/preferences.route
 import { createDailyReportRouter } from "./modules/daily-reports/daily-report.routes.js";
 import { DeepSeekClient, type DailyReportGenerator } from "./modules/daily-reports/deepseek.client.js";
 import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectionTester } from "./modules/settings/settings.routes.js";
-import { WindowsDpapiSecretStore, type SecretStore } from "./platform/dpapi.js";
+import { WindowsDpapiSecretStore } from "./platform/dpapi.js";
+import type { SecretStore } from "./platform/secret-store.js";
 import { createReminderRouter } from "./modules/reminders/reminder.routes.js";
 import type { NotificationChannel } from "./modules/reminders/notification-channel.js";
 import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";

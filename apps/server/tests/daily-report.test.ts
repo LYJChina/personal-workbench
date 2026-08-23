@@ -13,7 +13,7 @@ import {
   type DailyReportGenerationInput,
   type DailyReportGenerator
 } from "../src/modules/daily-reports/deepseek.client";
-import type { SecretStore } from "../src/platform/dpapi";
+import type { SecretStore } from "../src/platform/secret-store";
 
 class MemorySecretStore implements SecretStore {
   private readonly secrets = new Map<string, string>();

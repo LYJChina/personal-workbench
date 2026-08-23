@@ -8,7 +8,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { ConnectionTestFailure, testDeepSeekConnection, type MailConnectionInput, type ProviderConnectionInput } from "../src/modules/settings/settings.routes";
-import type { SecretStore } from "../src/platform/dpapi";
+import type { SecretStore } from "../src/platform/secret-store";
 
 class MemorySecretStore implements SecretStore {
   public readonly protectedValues: Array<{ name: string; plaintext: string }> = [];
