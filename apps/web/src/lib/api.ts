@@ -46,7 +46,44 @@ async function requestVoid(path: string, init?: RequestInit): Promise<void> {
   }
 }
 
+const fallbackBackupFilename = "LYJWorkBench-backup.sqlite";
+
+function backupFilename(contentDisposition: string | null): string {
+  const candidate = contentDisposition?.match(/filename="([^"]+)"/i)?.[1];
+  if (!candidate || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.sqlite$/.test(candidate) || candidate.includes("..")) {
+    return fallbackBackupFilename;
+  }
+  return candidate;
+}
+
+async function exportDatabase(): Promise<string> {
+  const response = await fetch("/api/backup/export", { method: "POST" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(body?.error?.message ?? "导出失败，请稍后重试");
+  }
+
+  const blob = await response.blob();
+  const filename = backupFilename(response.headers.get("Content-Disposition"));
+  let objectUrl: string | undefined;
+  let anchor: HTMLAnchorElement | undefined;
+  try {
+    objectUrl = URL.createObjectURL(blob);
+    anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.hidden = true;
+    document.body.append(anchor);
+    anchor.click();
+    return filename;
+  } finally {
+    anchor?.remove();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export const api = {
+  exportDatabase,
   getVaultStatus: () => requestJson<VaultStatus>("/vault/status"),
   getLegacyImportStatus: () => requestJson<{ detected: boolean }>("/vault/legacy-import-status"),
   setupVault: (masterPassword: string) => requestJson<VaultStatus>("/vault/setup", {

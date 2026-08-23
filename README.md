@@ -1,132 +1,89 @@
 # LYJ Workbench
 
-LYJ Workbench is a Windows-only personal workbench. Its production-local server binds only to `127.0.0.1`, and the built web UI and API share that single loopback origin. It does not deploy or synchronize data to a cloud service.
+LYJ Workbench is a local personal workbench for Windows and macOS. Its production-local server binds only to `127.0.0.1`; the built web interface and API share that loopback origin. The application does not deploy or synchronize its database to a cloud service.
 
 ## Prerequisites
 
-- Windows 10 or Windows 11 under the Windows account that will use the workbench
+- Windows 10/11 or a currently supported macOS release
 - Node.js 22
-- PowerShell 5.1 or later
-- pnpm 11.19.0 (the repository pins `pnpm@11.19.0`)
+- pnpm 11.19.0 (pinned by this repository)
 
-From PowerShell in the project directory, install dependencies:
+Use the same project commands on Windows and macOS:
 
-```powershell
-corepack enable
-corepack prepare pnpm@11.19.0 --activate
+```text
 pnpm install
-```
-
-## Development
-
-Start the Vite web development server and the Express API watcher together:
-
-```powershell
 pnpm dev
-```
-
-On Windows, this command first retires the two exact legacy LYJ Workbench reminder tasks left by older releases. It never creates or synchronizes a task. On macOS and other platforms the retirement step is a no-op.
-
-Open the development UI at `http://127.0.0.1:5173`. The API listens only on `http://127.0.0.1:3001`, and Vite forwards browser requests under `/api` to that exact loopback target so the development UI is API-functional.
-
-To use a different API port, set the same validated integer port for the Express server and Vite proxy before starting:
-
-```powershell
-$env:PORT = '43123'
-$env:LYJ_WORKBENCH_API_PORT = '43123'
-pnpm dev
-```
-
-The proxy target host cannot be overridden and remains `127.0.0.1`; malformed or out-of-range port overrides stop startup. Stop both development processes with `Ctrl+C`, then remove the two temporary environment values if they are no longer needed:
-
-```powershell
-Remove-Item Env:PORT, Env:LYJ_WORKBENCH_API_PORT -ErrorAction SilentlyContinue
-```
-
-## Build and production-local start
-
-Build every workspace package, including `apps/web/dist` and the compiled server entries:
-
-```powershell
 pnpm build
-```
-
-Start the production-local server and open the workbench after its health check succeeds:
-
-```powershell
 pnpm local:start
 ```
 
-On Windows, local startup performs the same one-time-safe legacy task retirement before starting the server. If Windows confirms that an old task exists but refuses to delete it, startup stops with: `旧版提醒任务清理失败，请在 Windows 任务计划程序中删除 LYJ Workbench 的旧提醒任务后重试。` Delete only the old LYJ Workbench reminder tasks in Task Scheduler, then run the command again.
+`pnpm install` installs every workspace dependency. `pnpm dev` starts the Vite interface at `http://127.0.0.1:5173` and the Express API at `http://127.0.0.1:3001`; Vite forwards `/api` requests to that exact loopback API. Stop development with `Ctrl+C`.
 
-The default URL is `http://127.0.0.1:3001`. To suppress browser opening or choose another loopback port:
-
-```powershell
-pnpm local:start -NoOpen
-pnpm local:start -Port 43123
-```
-
-`local:start` rejects malformed ports and starts the server with the host fixed to `127.0.0.1`; external interfaces and hostnames are not supported. Stop it with `Ctrl+C`. Re-run `pnpm build` after changing source files.
-
-## DeepSeek settings
-
-Open **设置 → DeepSeek**. Enter the HTTPS API address, model name, and API key, save, then use **测试 DeepSeek 连接**. The API key field is blank on every load; leaving it blank preserves the already stored key. The key is protected for the current Windows account with DPAPI and is never returned to the browser or stored in SQLite.
-
-No real DeepSeek request occurs during install, build, or local startup. Daily Report generation requires a saved, working DeepSeek configuration and sends the entered report material to the configured provider only when the user clicks Generate.
-
-## SMTP settings
-
-Open **设置 → 邮件**. Enter the SMTP host, port, transport mode (`STARTTLS` or `TLS`), username, from address, and password. Save, then use **测试邮件连接**. The password field is blank on every load; leaving it blank preserves the stored password. The SMTP password is DPAPI-protected and is loaded only when a connection or delivery is attempted.
-
-No email is sent during install, build, or local startup. The reminder page’s **发送测试邮件** action sends a real email when valid SMTP settings and a recipient are present.
-
-## Reminder center
-
-The **提醒事项** page supports creating, viewing, editing, and deleting one-time, finite-count, and recurring reminders. Reminder metadata can use an exact date and time, daily, weekly, monthly, or Chinese workdays. Automatic reminder execution is disabled; use **测试邮件** on a reminder when you want to send its email manually.
-
-The home page includes a monthly calendar and a scrollable list of reminder dates. Use **更新节假日** on the calendar to refresh the current and next year from the public Chinese holiday dataset. Reminder dates and repetition rules remain stored for display and future plugins, but the core application does not run them automatically.
-
-## Local data
-
-Application data is stored under:
+Run `pnpm build` before `pnpm local:start`. The production-local launcher waits for its own server health check and then opens `http://127.0.0.1:3001`. Its flags use Node command-line syntax on both platforms:
 
 ```text
-%LOCALAPPDATA%\LYJWorkBench\
-├── workbench.sqlite
-├── uploads\
-└── secrets\
+pnpm local:start --no-open
+pnpm local:start --port 43123
+pnpm local:start --no-open --port 43123
 ```
 
-- `workbench.sqlite` contains profile, preferences, non-secret settings, daily reports, reminders, and sanitized delivery status.
-- `uploads` contains profile images.
-- `secrets` contains encrypted DPAPI blobs, not plaintext credentials.
+The host is always canonical IPv4 loopback. Invalid or out-of-range ports stop startup. Rebuild after changing source files.
 
-Do not place credentials in project files, environment files, command arguments, or backup notes.
+On Windows only, `pnpm dev` and `pnpm local:start` may perform an exact, one-time retirement of two scheduled tasks created by old LYJ Workbench releases. This compatibility cleanup never creates a task or provides automatic reminder delivery. It is a no-op on macOS. If Windows refuses to delete one of those exact old tasks, delete only the named LYJ Workbench task in Task Scheduler and retry.
 
-## Backup
+## Windows and macOS data locations
 
-Before copying application data, stop `pnpm local:start` or `pnpm dev` with `Ctrl+C`, then run the verified preparation script:
+All current user data is authoritative in one SQLite database:
 
-```powershell
-powershell -NoProfile -File scripts/prepare-backup.ps1
+- Windows: `%LOCALAPPDATA%\LYJWorkBench\workbench.sqlite`
+- macOS: `~/Library/Application Support/LYJWorkBench/workbench.sqlite`
+
+The database contains profile fields and the profile photo, preferences, settings, encrypted vault metadata and secrets, reminders, and history. An `uploads` directory or legacy `secrets` directory may remain after an upgrade, but neither is part of the current authoritative backup. Do not place credentials in project files, environment files, command arguments, or backup notes.
+
+## Local vault and provider settings
+
+On first use, create a master password in the vault screen. On later starts, unlock the vault with that password before using the protected application. DeepSeek API keys and SMTP passwords are encrypted inside `workbench.sqlite`; plaintext secret values are never returned to the browser. Leaving a secret input blank in Settings preserves its stored value.
+
+The encrypted vault is portable between Windows and macOS. A restored database requires the same master password. Losing that password means the encrypted secrets cannot be recovered.
+
+Older Windows releases stored secrets as account-bound DPAPI files. When those files are detected under the original Windows account, first-time vault setup can perform a one-time import into the portable vault. This is the only supported DPAPI path: normal storage, unlock, backup, and use do not depend on DPAPI or PowerShell. Complete the import on the original Windows account before moving the database to another computer.
+
+Open **设置 → DeepSeek** to configure the HTTPS API address, model, and API key, and use **测试 DeepSeek 连接** when you explicitly want a connection test. Provider content is sent only when you invoke an AI action.
+
+Open **设置 → 邮件通知** to retain SMTP host, port, transport mode (`STARTTLS` or `TLS`), username, sender address, and password. Email is sent only when you explicitly use a reminder's manual **测试邮件** action. Installation, build, startup, and reminder schedules do not send email automatically.
+
+## Reminders
+
+The **提醒事项** page supports one-time, finite-count, and recurring reminder metadata. Dates and repetition rules remain available for display and future extensions. The core application has no automatic reminder-delivery scheduler; use the manual test-email action when you intend to send a message.
+
+The home calendar can refresh Chinese holiday data for the current and next year. Calendar synchronization changes local calendar data only and does not deliver reminders.
+
+## Export a backup
+
+Open **设置 → 备份与迁移** and choose **导出数据库**. The running application creates a consistent SQLite snapshot with SQLite's online-backup mechanism, validates its integrity, and downloads a file named like `LYJWorkBench-backup-2026-08-23.sqlite`. You do not need to stop the application before exporting.
+
+The exported database includes profile data and the photo, encrypted keys, settings, reminders, and history. Keep it in a protected location because it contains personal data and encrypted credential material. Secrets remain encrypted and are not directly readable as plaintext; the same master password is required after transfer.
+
+## Restore or migrate
+
+1. Stop `pnpm dev` or `pnpm local:start` with `Ctrl+C` on the destination computer.
+2. Locate the destination data directory listed above.
+3. Create a separate recovery folder. Move the current `workbench.sqlite` and, if present, its `workbench.sqlite-wal` and `workbench.sqlite-shm` sidecars into that folder together as the same recoverable set. Do not delete or separate these files until the restored application has been verified.
+4. Confirm that all three original names are absent from the data directory before copying the exported database. This isolates old WAL/SHM state before placing the exported database.
+5. Copy the exported SQLite file into the data directory and name it exactly `workbench.sqlite`. Replace only this database set; do not replace the whole data directory or copy sidecars from another database.
+6. Start the application, unlock it with the same master password, and verify the profile, photo, settings, reminders, and history.
+7. Run provider and SMTP connection tests manually if needed.
+
+If verification fails, stop the application again. Move the failed restored `workbench.sqlite` and any newly created `workbench.sqlite-wal` and `workbench.sqlite-shm` into a separate diagnostic folder together as a set. Then roll back by moving the retained original database and its matching sidecars from the recovery folder back into the data directory as the same set. Never mix a database with sidecars from the other set.
+
+## Verification
+
+The repository continuously runs the same checks on `windows-latest` and `macos-latest` with Node 22 and pnpm 11.19.0:
+
+```text
+pnpm check
+pnpm test
+pnpm build
 ```
 
-The script only checks that no LYJ Workbench server is listening on `127.0.0.1:3001`, then prints the local data path. If the workbench used a non-default port, pass the same value with `-Port`.
-
-Do not copy data unless the script prints `Backup preparation complete`. This prevents SQLite writes while the copy is in progress.
-
-Copy the entire `%LOCALAPPDATA%\LYJWorkBench` directory to a protected local backup location. Keep the backup access restricted because it contains personal data and encrypted credential blobs. After the copy completes, resume the server.
-
-## Restore on the same Windows account
-
-1. Stop the server and run `powershell -NoProfile -File scripts/prepare-backup.ps1`; continue only after it reports completion.
-2. Rename the current `%LOCALAPPDATA%\LYJWorkBench` directory as a recoverable pre-restore copy.
-3. Copy the backed-up `LYJWorkBench` directory into `%LOCALAPPDATA%`.
-4. Start the workbench and verify the profile, theme, layout, reports, and reminder settings.
-5. Test provider connections manually. If DPAPI cannot decrypt a restored blob, re-enter the corresponding secret in Settings.
-
-## Transfer to another Windows computer or account
-
-Project files, `workbench.sqlite`, and `uploads` can be transferred. On the destination computer, install the prerequisites, run `pnpm install`, then `pnpm build`. With the server stopped, copy the database and uploads into the destination account’s `%LOCALAPPDATA%\LYJWorkBench` directory.
-
-DPAPI secret blobs are bound to their Windows protection context. They cannot be reused by another Windows account, and copied blobs should not be relied on after a computer or account migration. Do not transfer the `secrets` directory as usable credentials; re-enter the DeepSeek API key and SMTP password under the destination Windows account, then run the explicit connection tests.
+The full test command covers the cross-platform launcher, security boundaries, vault and API behavior, one-time legacy import, database/profile migrations, and online backup export.

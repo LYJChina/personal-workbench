@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ThemeProvider } from "../../app/ThemeProvider";
 import { SettingsPage, type SettingsApi } from "./SettingsPage";
@@ -22,7 +23,8 @@ function createApi(): SettingsApi {
     updateDeepSeekSettings: vi.fn().mockImplementation(async (input) => ({ ...input, apiKeyConfigured: Boolean(input.apiKey) || true })),
     updateMailSettings: vi.fn().mockImplementation(async (input) => ({ ...input, smtpPasswordConfigured: Boolean(input.smtpPassword) || true })),
     testDeepSeekConnection: vi.fn().mockResolvedValue({ status: "success", message: "连接成功" }),
-    testMailConnection: vi.fn().mockResolvedValue({ status: "success", message: "连接成功" })
+    testMailConnection: vi.fn().mockResolvedValue({ status: "success", message: "连接成功" }),
+    exportDatabase: vi.fn().mockResolvedValue("LYJWorkBench-backup-2026-08-23.sqlite")
   };
 }
 
@@ -147,5 +149,77 @@ describe("SettingsPage", () => {
     expect(document.documentElement).toHaveAttribute("data-density", "compact");
     expect(document.documentElement).toHaveAttribute("data-radius", "subtle");
     expect(document.documentElement).toHaveAttribute("data-glass", "false");
+  });
+
+  it("explains portable encrypted backups and exports once while the action is pending", async () => {
+    let finishExport!: (filename: string) => void;
+    const settingsApi = createApi();
+    settingsApi.exportDatabase = vi.fn(() => new Promise<string>((resolve) => { finishExport = resolve; }));
+    renderPage(settingsApi);
+
+    expect(await screen.findByRole("heading", { name: "备份与迁移" })).toBeVisible();
+    expect(screen.getByText(/头像/)).toBeVisible();
+    expect(screen.getByText(/加密后的密钥/)).toBeVisible();
+    expect(screen.getAllByText(/同一主密码/)).not.toHaveLength(0);
+    expect(screen.getByText(/明文密钥不会被直接读取/)).toBeVisible();
+
+    const button = screen.getByRole("button", { name: "导出数据库" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(button).toBeDisabled();
+    expect(settingsApi.exportDatabase).toHaveBeenCalledTimes(1);
+    finishExport("LYJWorkBench-backup-2026-08-23.sqlite");
+    expect(await screen.findByRole("status")).toHaveTextContent("备份已导出");
+  });
+
+  it("restores its mounted lifecycle marker after the Strict Mode effect replay", async () => {
+    const settingsApi = createApi();
+    render(
+      <StrictMode>
+        <AppearanceProvider initialAppearance={defaultAppearance}>
+          <ThemeProvider initialTheme="light" onSave={vi.fn().mockResolvedValue(undefined)}>
+            <SettingsPage api={settingsApi} />
+          </ThemeProvider>
+        </AppearanceProvider>
+      </StrictMode>
+    );
+
+    await screen.findByRole("heading", { name: "备份与迁移" });
+    fireEvent.click(screen.getByRole("button", { name: "导出数据库" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("备份已导出");
+    expect(screen.getByRole("button", { name: "导出数据库" })).toBeEnabled();
+  });
+
+  it("shows an accessible export failure and does not update state after unmount", async () => {
+    const failureApi = createApi();
+    failureApi.exportDatabase = vi.fn().mockRejectedValue(new Error("导出失败，请稍后重试"));
+    const view = render(
+      <AppearanceProvider initialAppearance={defaultAppearance}>
+        <ThemeProvider initialTheme="light" onSave={vi.fn().mockResolvedValue(undefined)}>
+          <SettingsPage api={failureApi} />
+        </ThemeProvider>
+      </AppearanceProvider>
+    );
+
+    await screen.findByRole("heading", { name: "备份与迁移" });
+    fireEvent.click(screen.getByRole("button", { name: "导出数据库" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("导出失败，请稍后重试");
+
+    let resolvePending!: (filename: string) => void;
+    const pendingApi = createApi();
+    pendingApi.exportDatabase = vi.fn(() => new Promise<string>((resolve) => { resolvePending = resolve; }));
+    view.rerender(
+      <AppearanceProvider initialAppearance={defaultAppearance}>
+        <ThemeProvider initialTheme="light" onSave={vi.fn().mockResolvedValue(undefined)}>
+          <SettingsPage api={pendingApi} />
+        </ThemeProvider>
+      </AppearanceProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "导出数据库" }));
+    view.unmount();
+    resolvePending("LYJWorkBench-backup.sqlite");
+    await Promise.resolve();
   });
 });

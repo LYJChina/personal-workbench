@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   ConnectionTestResult,
   DeepSeekSettings,
@@ -18,6 +18,7 @@ export interface SettingsApi {
   updateMailSettings(settings: MailSettingsUpdate): Promise<MailSettings>;
   testDeepSeekConnection(): Promise<ConnectionTestResult>;
   testMailConnection(): Promise<ConnectionTestResult>;
+  exportDatabase(): Promise<string>;
 }
 
 interface SettingsPageProps {
@@ -39,6 +40,15 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
   const [deepSeekTest, setDeepSeekTest] = useState<TestState>(null);
   const [mailTest, setMailTest] = useState<TestState>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const mounted = useRef(true);
+  const exportInFlight = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -117,18 +127,34 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
     }
   }
 
+  async function exportBackup() {
+    if (exportInFlight.current) return;
+    exportInFlight.current = true;
+    setExporting(true);
+    setExportFeedback(null);
+    try {
+      const filename = await settingsApi.exportDatabase();
+      if (mounted.current) setExportFeedback({ kind: "success", message: `备份已导出：${filename}` });
+    } catch (error) {
+      if (mounted.current) setExportFeedback({ kind: "error", message: messageFor(error) });
+    } finally {
+      exportInFlight.current = false;
+      if (mounted.current) setExporting(false);
+    }
+  }
+
   if (!settings) return <section className="page-loading">{feedback ? <p role="alert">{feedback}</p> : <><span className="spinner" />正在加载设置…</>}</section>;
 
   return (
     <section className="settings-page">
-      <header className="page-heading"><div><span className="eyebrow">PREFERENCES</span><h2>设置</h2><p>管理 AI、邮件通知和工作台外观。</p></div></header>
+      <header className="page-heading"><div><span className="eyebrow">PREFERENCES</span><h2>设置</h2><p>管理 AI、邮件通知、备份和工作台外观。</p></div></header>
       {feedback && <p className="feedback-banner" role="status">{feedback}</p>}
 
       <section aria-labelledby="deepseek-heading">
         <div className="settings-section-heading"><div className="card-icon"><Icon name="sparkles" /></div><div><h3 id="deepseek-heading">DeepSeek</h3><p>用于日报润色和后续 AI 办公功能</p></div><span className={`status-chip ${settings.deepseek.apiKeyConfigured ? "" : "neutral"}`}>{settings.deepseek.apiKeyConfigured ? "API Key 已配置" : "API Key 未配置"}</span></div>
         <form onSubmit={saveDeepSeek}>
           <div className="form-grid"><label>API 地址<input type="url" required value={settings.deepseek.baseUrl} onChange={(event) => updateDeepSeek("baseUrl", event.target.value)} /></label><label>模型名称<input required value={settings.deepseek.model} onChange={(event) => updateDeepSeek("model", event.target.value)} /></label></div>
-          <label>API Key<input aria-label="API Key" type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="留空则保持不变" /><small>密钥使用 Windows DPAPI 加密，仅当前账户可读取。</small></label>
+          <label>API Key<input aria-label="API Key" type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="留空则保持不变" /><small>密钥保存在可迁移的本地加密保险库中，转移后需使用同一主密码解锁。</small></label>
           <div className="form-actions"><button className="button-primary" type="submit">保存 DeepSeek 设置</button><button className="button-secondary" type="button" disabled={deepSeekTest?.status === "pending"} onClick={() => void runDeepSeekTest()}>{deepSeekTest?.status === "pending" ? "测试中…" : "测试 DeepSeek 连接"}</button></div>
           {deepSeekTest && deepSeekTest.status !== "pending" && <p role="status">{deepSeekTest.message}</p>}
         </form>
@@ -144,6 +170,13 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
           <div className="form-actions"><button className="button-primary" type="submit">保存邮件设置</button><button className="button-secondary" type="button" disabled={mailTest?.status === "pending"} onClick={() => void runMailTest()}>{mailTest?.status === "pending" ? "测试中…" : "测试邮件连接"}</button></div>
           {mailTest && mailTest.status !== "pending" && <p role="status">{mailTest.message}</p>}
         </form>
+      </section>
+
+      <section aria-labelledby="backup-heading">
+        <div className="settings-section-heading"><div className="card-icon"><Icon name="file" /></div><div><h3 id="backup-heading">备份与迁移</h3><p>导出一份完整且可验证的本地数据库快照</p></div></div>
+        <p>导出的数据库包含个人资料和头像、加密后的密钥、设置、提醒和历史。迁移后需要使用同一主密码；明文密钥不会被直接读取。</p>
+        <div className="form-actions"><button className="button-primary" type="button" disabled={exporting} onClick={() => void exportBackup()}>{exporting ? "正在导出…" : "导出数据库"}</button></div>
+        {exportFeedback && <p role={exportFeedback.kind === "error" ? "alert" : "status"}>{exportFeedback.message}</p>}
       </section>
 
       <section aria-labelledby="appearance-heading">

@@ -12,7 +12,7 @@ export function AiOfficePage() {
           <span className="tool-arrow">进入 <span aria-hidden="true">→</span></span>
         </Link>
       </div>
-      <aside className="ai-office-note" aria-label="可用工具说明"><Icon name="lock" size={15} /><span><strong>可用工具</strong><small>所有输入通过本机服务处理，API Key 使用 Windows 加密保护。</small></span></aside>
+      <aside className="ai-office-note" aria-label="可用工具说明"><Icon name="lock" size={15} /><span><strong>可用工具</strong><small>所有输入通过本机服务处理，API Key 保存在本地加密保险库中。</small></span></aside>
     </section>
   );
 }

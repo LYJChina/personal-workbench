@@ -25,6 +25,8 @@ import { createHolidayRouter } from "./modules/calendar/holiday.routes.js";
 import type { HolidayYearLoader } from "./modules/calendar/holiday.client.js";
 import { AiChatClient, type AiChatGenerator } from "./modules/ai-chat/ai-chat.client.js";
 import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
+import { BackupService, type BackupExporter } from "./modules/backup/backup.service.js";
+import { createBackupRouter, type BackupReadStreamFactory } from "./modules/backup/backup.routes.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -46,6 +48,10 @@ export interface CreateAppOptions {
   webDistDir?: string;
   instanceToken?: string;
   profileDatabaseOpener?: typeof openDatabase;
+  backupNow?: () => Date;
+  backupTempRoot?: string;
+  backupExporter?: BackupExporter;
+  backupCreateReadStream?: BackupReadStreamFactory;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -76,6 +82,13 @@ export function createApp(options: CreateAppOptions = {}): Express {
   });
 
   app.use("/api", createVaultRouter({ vault, resolveLegacySecretImporter, monotonicNow: options.vaultMonotonicNow }));
+  app.use("/api", createBackupRouter({
+    exporter: options.backupExporter ?? new BackupService(paths, {
+      now: options.backupNow,
+      tempRoot: options.backupTempRoot
+    }),
+    createFileStream: options.backupCreateReadStream
+  }));
 
   app.use("/api", createProfileRouter(paths, { openDatabase: options.profileDatabaseOpener }));
   app.use("/api", createPreferencesRouter(paths));

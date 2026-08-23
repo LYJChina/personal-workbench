@@ -82,6 +82,8 @@ describe("complete application navigation", () => {
     expect(screen.queryByText("你的日常办公助手")).not.toBeInTheDocument();
     expect(screen.queryByText("本地工作台")).not.toBeInTheDocument();
     expect(screen.getByText("数据仅保存在此电脑")).toBeVisible();
+    expect(screen.getByText(/API Key 保存在本地加密保险库中/)).toBeVisible();
+    expect(screen.queryByText(/API Key 使用 Windows 加密保护/)).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "可用工具说明" })).toBeVisible();
     await user.click(screen.getByRole("link", { name: "AI 润色" }));
     expect(await screen.findByRole("heading", { name: "AI 润色" })).toBeVisible();
