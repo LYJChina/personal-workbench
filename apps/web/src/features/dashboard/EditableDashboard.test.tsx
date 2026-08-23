@@ -43,6 +43,7 @@ describe("EditableDashboard", () => {
     render(<EditableDashboard initialLayout={profileLayout} onSave={onSave} />);
 
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "false");
+    expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-columns", "16");
     await user.click(screen.getByRole("button", { name: "编辑工作台" }));
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "true");
     await user.click(screen.getByRole("button", { name: "完成编辑" }));

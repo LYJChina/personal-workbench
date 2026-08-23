@@ -14,6 +14,8 @@ import { AiPolishClient, type AiPolishGenerator } from "./modules/ai-polish/ai-p
 import { createHolidayRouter } from "./modules/calendar/holiday.routes.js";
 import type { HolidayYearLoader } from "./modules/calendar/holiday.client.js";
 import type { ReminderScheduler } from "./modules/reminders/reminder-scheduler.js";
+import { AiChatClient, type AiChatGenerator } from "./modules/ai-chat/ai-chat.client.js";
+import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -24,6 +26,7 @@ export interface CreateAppOptions {
   connectionTimeoutMs?: number;
   deepSeekClient?: DailyReportGenerator;
   aiPolishClient?: AiPolishGenerator;
+  aiChatClient?: AiChatGenerator;
   reminderChannel?: NotificationChannel;
   holidayYearLoader?: HolidayYearLoader;
   reminderScheduler?: ReminderScheduler;
@@ -38,6 +41,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const secretStore = options.secretStore ?? new WindowsDpapiSecretStore(paths.secretsDir);
   const deepSeekClient = options.deepSeekClient ?? new DeepSeekClient();
   const aiPolishClient = options.aiPolishClient ?? new AiPolishClient();
+  const aiChatClient = options.aiChatClient ?? new AiChatClient();
 
   app.use(express.json());
 
@@ -58,6 +62,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api", createAiPolishRouter(paths, {
     secretStore,
     generator: aiPolishClient,
+    allowLoopbackHttp: options.allowLoopbackHttp
+  }));
+  app.use("/api", createAiChatRouter(paths, {
+    secretStore,
+    generator: aiChatClient,
     allowLoopbackHttp: options.allowLoopbackHttp
   }));
   app.use("/api", createReminderRouter(paths, {

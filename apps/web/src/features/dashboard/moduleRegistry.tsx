@@ -4,6 +4,7 @@ import { ProfileCard } from "../profile/ProfileCard";
 import { api } from "../../lib/api";
 import { WorkdayCalendarCard } from "../calendar/WorkdayCalendarCard";
 import { UpcomingRemindersCard } from "../reminders/UpcomingRemindersCard";
+import { AiChatCard } from "../ai-chat/AiChatCard";
 
 export interface ModuleDefinition {
   id: ModuleId;
@@ -46,8 +47,8 @@ export const moduleRegistry: Record<ModuleId, ModuleDefinition> = {
   profile: {
     id: "profile",
     title: "个人信息",
-    minW: 6,
-    minH: 4,
+    minW: 4,
+    minH: 5,
     render: () => <ProfileModule />
   },
   "workday-calendar": {
@@ -57,5 +58,9 @@ export const moduleRegistry: Record<ModuleId, ModuleDefinition> = {
   "upcoming-reminders": {
     id: "upcoming-reminders", title: "近期提醒", minW: 4, minH: 5,
     render: () => <UpcomingRemindersCard />
+  },
+  "ai-chat": {
+    id: "ai-chat", title: "大模型对话", minW: 4, minH: 5,
+    render: () => <AiChatCard />
   }
 };

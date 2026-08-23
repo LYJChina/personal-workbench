@@ -12,7 +12,10 @@ const navigation = [
   { id: "settings", label: "设置", path: "/settings", position: 4, visible: true, disabled: false }
 ];
 
-const layout = [{ moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true }];
+const layout = [
+  { moduleId: "profile", x: 0, y: 0, w: 4, h: 5, enabled: true },
+  { moduleId: "ai-chat", x: 12, y: 0, w: 4, h: 5, enabled: true }
+];
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -35,6 +38,7 @@ describe("complete application navigation", () => {
       if (path === "/api/preferences/theme" && method === "GET") return json({ theme: "light" });
       if (path === "/api/preferences/theme" && method === "PUT") return json(JSON.parse(String(init?.body)));
       if (path === "/api/profile") return json({ name: "LYJ", birthday: "", employeeNumber: "001", customFields: [], photoFilename: null });
+      if (path === "/api/ai-chat/messages") return json([]);
       if (path === "/api/daily-reports") return json([]);
       if (path === "/api/ai-polish") return json([]);
       if (path === "/api/settings") return json({
@@ -63,6 +67,8 @@ describe("complete application navigation", () => {
     render(<MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>);
 
     expect(await screen.findByRole("region", { name: "工作台" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "大模型对话" })).toBeVisible();
+    expect(await screen.findByText("随时问我一个问题")).toBeVisible();
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "false");
     await user.click(screen.getByRole("button", { name: "编辑工作台" }));
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "true");

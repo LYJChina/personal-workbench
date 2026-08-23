@@ -2,8 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
+import { resolveAppPaths } from "../src/config/paths";
+import { openDatabase } from "../src/db/database";
 
 describe("workspace preferences API", () => {
   let tempDir: string;
@@ -27,13 +30,28 @@ describe("workspace preferences API", () => {
 
     expect(layout.status).toBe(200);
     expect(layout.body).toEqual([
-      { moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true },
+      { moduleId: "profile", x: 0, y: 0, w: 4, h: 5, enabled: true },
       { moduleId: "workday-calendar", x: 4, y: 0, w: 4, h: 5, enabled: true },
-      { moduleId: "upcoming-reminders", x: 8, y: 0, w: 4, h: 5, enabled: true }
+      { moduleId: "upcoming-reminders", x: 8, y: 0, w: 4, h: 5, enabled: true },
+      { moduleId: "ai-chat", x: 12, y: 0, w: 4, h: 5, enabled: true }
     ]);
     expect(navigation.body.map((item: { id: string }) => item.id)).toEqual(["home", "ai-office", "reminders", "vault-coming-soon", "settings"]);
     expect(navigation.body.find((item: { id: string }) => item.id === "vault-coming-soon")).toMatchObject({ disabled: true, visible: true });
     expect(theme.body).toEqual({ theme: "light" });
+  });
+
+  it("adds chat to a legacy customized layout without resetting its saved size", async () => {
+    openDatabase(resolveAppPaths({ dataDir: tempDir })).close();
+    const database = new Database(resolveAppPaths({ dataDir: tempDir }).databasePath);
+    database.prepare("DELETE FROM dashboard_layouts").run();
+    database.prepare("INSERT INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES ('profile', 1, 2, 7, 8, 1)").run();
+    database.prepare("DELETE FROM app_settings WHERE key = 'dashboard-v3-ai-chat-seeded'").run();
+    database.close();
+
+    const layout = (await request(createApp({ dataDir: tempDir })).get("/api/preferences/layout").expect(200)).body;
+
+    expect(layout).toContainEqual({ moduleId: "profile", x: 1, y: 2, w: 7, h: 8, enabled: true });
+    expect(layout).toContainEqual({ moduleId: "ai-chat", x: 12, y: 0, w: 4, h: 5, enabled: true });
   });
 
   it("round trips validated preferences and persists them across app instances", async () => {

@@ -35,13 +35,13 @@ export const ProfileUpdateSchema = ProfileSchema.pick({
   employeeNumber: z.string().trim().min(1).max(100)
 });
 
-export const ModuleIdSchema = z.enum(["profile", "workday-calendar", "upcoming-reminders"]);
+export const ModuleIdSchema = z.enum(["profile", "workday-calendar", "upcoming-reminders", "ai-chat"]);
 
 export const DashboardLayoutSchema = z.object({
   moduleId: ModuleIdSchema,
   x: z.number().int().min(0),
   y: z.number().int().min(0),
-  w: z.number().int().min(1).max(12),
+  w: z.number().int().min(1).max(16),
   h: z.number().int().min(1).max(100),
   enabled: z.boolean()
 });
@@ -159,6 +159,18 @@ export const AiSystemPromptInputSchema = z.object({
 export const AiSystemPromptResultSchema = z.object({
   prompt: z.string().trim().min(1).max(10_000),
   model: z.string().trim().min(1)
+});
+
+export const AiChatRoleSchema = z.enum(["user", "assistant"]);
+export const AiChatInputSchema = z.object({
+  content: z.string().trim().min(1).max(20_000)
+});
+export const AiChatMessageSchema = z.object({
+  id: z.number().int().positive(),
+  role: AiChatRoleSchema,
+  content: z.string(),
+  model: z.string().nullable(),
+  createdAt: z.string()
 });
 
 export const ReminderIdSchema = z.literal("outbound-checkin");
@@ -290,6 +302,9 @@ export type AiPolishPrompt = z.infer<typeof AiPolishPromptSchema>;
 export type AiPolishPromptUpdate = z.infer<typeof AiPolishPromptUpdateSchema>;
 export type AiSystemPromptInput = z.infer<typeof AiSystemPromptInputSchema>;
 export type AiSystemPromptResult = z.infer<typeof AiSystemPromptResultSchema>;
+export type AiChatRole = z.infer<typeof AiChatRoleSchema>;
+export type AiChatInput = z.infer<typeof AiChatInputSchema>;
+export type AiChatMessage = z.infer<typeof AiChatMessageSchema>;
 export type ReminderId = z.infer<typeof ReminderIdSchema>;
 export type ReminderUpdate = z.infer<typeof ReminderUpdateSchema>;
 export type ReminderFailureCategory = z.infer<typeof ReminderFailureCategorySchema>;

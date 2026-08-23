@@ -6,6 +6,7 @@ import type {
   AiPolishRecord,
   AiSystemPromptInput,
   AiSystemPromptResult,
+  AiChatMessage,
   DashboardLayout,
   DailyReport,
   DailyReportInput,
@@ -111,6 +112,13 @@ export const api = {
     body: JSON.stringify(input)
   }),
   getAiPolishHistory: () => requestJson<AiPolishRecord[]>("/ai-polish"),
+  getAiChatMessages: () => requestJson<AiChatMessage[]>("/ai-chat/messages"),
+  sendAiChatMessage: (content: string) => requestJson<AiChatMessage>("/ai-chat/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content })
+  }),
+  clearAiChatMessages: () => requestVoid("/ai-chat/messages", { method: "DELETE" }),
   getAiPolishPrompts: () => requestJson<AiPolishPrompt[]>("/ai-polish/prompts"),
   saveAiPolishPrompt: (kind: AiPolishKind, systemPrompt: string) => requestJson<AiPolishPrompt>(`/ai-polish/prompts/${kind}`, {
     method: "PUT",

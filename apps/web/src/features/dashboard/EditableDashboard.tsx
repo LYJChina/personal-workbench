@@ -78,6 +78,7 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
   }
 
   const quote = dailyQuote(now ?? currentDate);
+  const columns = gridWidth < 700 ? 4 : 16;
 
   return (
     <section aria-label="工作台" className="dashboard-page">
@@ -89,12 +90,12 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
       </div>
       {error && <p role="alert">{error}</p>}
       {editing && <div className="info-banner" role="status"><Icon name="grid" size={18} />拖动卡片调整位置，拖拽右下角调整大小。</div>}
-      <div ref={gridContainerRef} className="dashboard-grid" data-testid="dashboard-grid" data-editable={String(editing)}>
+      <div ref={gridContainerRef} className="dashboard-grid" data-testid="dashboard-grid" data-editable={String(editing)} data-columns={columns}>
         <ReactGridLayout
           width={gridWidth}
-          cols={gridWidth < 700 ? 4 : 12}
+          cols={columns}
           rowHeight={72}
-          layout={toGridLayout(layout, gridWidth < 700 ? 4 : 12)}
+          layout={toGridLayout(layout, columns)}
           isDraggable={editing}
           isResizable={editing}
           onLayoutChange={updateLayout}

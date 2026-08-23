@@ -2,9 +2,10 @@ import type Database from "better-sqlite3";
 import type { DashboardLayout, NavigationItem, Theme } from "@workbench/contracts";
 
 const defaultLayout: DashboardLayout[] = [
-  { moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true },
+  { moduleId: "profile", x: 0, y: 0, w: 4, h: 5, enabled: true },
   { moduleId: "workday-calendar", x: 4, y: 0, w: 4, h: 5, enabled: true },
-  { moduleId: "upcoming-reminders", x: 8, y: 0, w: 4, h: 5, enabled: true }
+  { moduleId: "upcoming-reminders", x: 8, y: 0, w: 4, h: 5, enabled: true },
+  { moduleId: "ai-chat", x: 12, y: 0, w: 4, h: 5, enabled: true }
 ];
 
 const defaultNavigation: NavigationItem[] = [
@@ -86,6 +87,23 @@ export class PreferencesRepository {
         const insertLayout = this.database.prepare("INSERT OR IGNORE INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)");
         defaultLayout.forEach((item) => insertLayout.run(item.moduleId, item.x, item.y, item.w, item.h, Number(item.enabled)));
         this.database.prepare("INSERT INTO app_settings (key, value) VALUES ('dashboard-v2-seeded', '1')").run();
+      }
+      const chatLayoutSeeded = this.database.prepare("SELECT 1 FROM app_settings WHERE key = 'dashboard-v3-ai-chat-seeded'").get();
+      if (!chatLayoutSeeded) {
+        const rows = this.database.prepare("SELECT module_id, x, y, w, h, enabled FROM dashboard_layouts ORDER BY y, x").all() as LayoutRow[];
+        const usesLegacyDefault = rows.length === 3
+          && rows.some((row) => row.module_id === "profile" && row.x === 0 && row.y === 0 && row.w === 4 && row.h === 4 && row.enabled === 1)
+          && rows.some((row) => row.module_id === "workday-calendar" && row.x === 4 && row.y === 0 && row.w === 4 && row.h === 5 && row.enabled === 1)
+          && rows.some((row) => row.module_id === "upcoming-reminders" && row.x === 8 && row.y === 0 && row.w === 4 && row.h === 5 && row.enabled === 1);
+        const insertLayout = this.database.prepare("INSERT OR REPLACE INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)");
+        if (usesLegacyDefault) {
+          defaultLayout.forEach((item) => insertLayout.run(item.moduleId, item.x, item.y, item.w, item.h, Number(item.enabled)));
+        } else {
+          const chat = defaultLayout.find((item) => item.moduleId === "ai-chat")!;
+          this.database.prepare("INSERT OR IGNORE INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)")
+            .run(chat.moduleId, chat.x, chat.y, chat.w, chat.h, Number(chat.enabled));
+        }
+        this.database.prepare("INSERT INTO app_settings (key, value) VALUES ('dashboard-v3-ai-chat-seeded', '1')").run();
       }
       const insertNavigation = this.database.prepare("INSERT OR IGNORE INTO navigation_items (id, label, path, position, visible, disabled) VALUES (?, ?, ?, ?, ?, ?)");
       defaultNavigation.forEach((item) => insertNavigation.run(item.id, item.label, item.path, item.position, Number(item.visible), Number(item.disabled)));

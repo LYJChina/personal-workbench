@@ -50,6 +50,17 @@ CREATE TABLE IF NOT EXISTS ai_polish_prompts (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  model TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS ai_chat_messages_created_idx
+  ON ai_chat_messages(created_at, id);
+
 CREATE TABLE IF NOT EXISTS dashboard_layouts (
   module_id TEXT PRIMARY KEY,
   x INTEGER NOT NULL,
