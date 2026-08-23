@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WindowsDpapiSecretStore } from "../src/platform/dpapi";
+import { WindowsDpapiSecretStore } from "../src/platform/legacy-windows-dpapi";
 
 const describeOnWindows = process.platform === "win32" ? describe : describe.skip;
 const execFileAsync = promisify(execFile);
@@ -74,6 +74,12 @@ describeOnWindows("Windows DPAPI secret store", () => {
     const store = new WindowsDpapiSecretStore(join(tempDir, "secrets"));
     await expect(store.protectSecret("../escape", "secret")).rejects.toThrow("Unsupported secret name");
     await expect(store.readSecret("unknown-secret")).rejects.toThrow("Unsupported secret name");
+  });
+
+  it("short-circuits non-Windows reads before filesystem access or PowerShell", async () => {
+    const store = new WindowsDpapiSecretStore(join(tempDir, "secrets"), { platform: "darwin" });
+
+    await expect(store.readSecret(secretName)).rejects.toThrow("Windows DPAPI is available only on Windows");
   });
 
   it("ignores an ambient DPAPI failure point on the normal production path", async () => {

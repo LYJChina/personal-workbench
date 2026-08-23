@@ -6,12 +6,14 @@ import {
   VaultIntegrityError,
   type VaultService
 } from "./vault.service.js";
+import { readEligibleLegacySecrets, type LegacySecretImporter } from "./legacy-secret-import.js";
 
 const COOLDOWN_FAILURES = 5;
 const COOLDOWN_MS = 30_000;
 
 interface VaultRouterDependencies {
   vault: Pick<VaultService, "status" | "setup" | "unlock" | "lock">;
+  resolveLegacySecretImporter?: () => LegacySecretImporter | undefined;
   monotonicNow?: () => number;
 }
 
@@ -19,7 +21,7 @@ function apiError(response: Response, status: number, message: string, code: str
   response.status(status).json({ error: { message, code } });
 }
 
-export function createVaultRouter({ vault, monotonicNow = () => performance.now() }: VaultRouterDependencies): Router {
+export function createVaultRouter({ vault, resolveLegacySecretImporter, monotonicNow = () => performance.now() }: VaultRouterDependencies): Router {
   const router = Router();
   let consecutiveFailures = 0;
   let cooldownUntil = 0;
@@ -39,6 +41,15 @@ export function createVaultRouter({ vault, monotonicNow = () => performance.now(
     }
   });
 
+  router.get("/vault/legacy-import-status", (_request, response) => {
+    try {
+      const status = vault.status();
+      response.json({ detected: !status.configured && resolveLegacySecretImporter?.() !== undefined });
+    } catch {
+      apiError(response, 500, "保险库数据无法验证", "VAULT_INTEGRITY_ERROR");
+    }
+  });
+
   router.post("/vault/setup", async (request, response) => {
     const parsed = VaultSetupInputSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -51,7 +62,19 @@ export function createVaultRouter({ vault, monotonicNow = () => performance.now(
           apiError(response, 409, "保险库已经设置", "VAULT_ALREADY_CONFIGURED");
           return;
         }
-        await vault.setup(parsed.data.masterPassword, {});
+        const legacySecretImporter = resolveLegacySecretImporter?.();
+        let initialSecrets: Record<string, string> = {};
+        try {
+          if (legacySecretImporter) initialSecrets = await readEligibleLegacySecrets(legacySecretImporter);
+        } catch {
+          apiError(response, 500, "旧版密钥迁移失败", "LEGACY_SECRET_IMPORT_FAILED");
+          return;
+        }
+        try {
+          await vault.setup(parsed.data.masterPassword, initialSecrets);
+        } finally {
+          for (const name of Object.keys(initialSecrets)) delete initialSecrets[name];
+        }
         consecutiveFailures = 0;
         cooldownUntil = 0;
         response.status(201).json(VaultStatusSchema.parse(vault.status()));

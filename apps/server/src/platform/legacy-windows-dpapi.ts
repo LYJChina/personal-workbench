@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
+import { lstat, open } from "node:fs/promises";
+import type { Stats } from "node:fs";
 import { join } from "node:path";
 import type { SecretStore } from "./secret-store.js";
 
@@ -8,6 +8,7 @@ const allowedSecretNames = new Set(["deepseek-api-key", "smtp-password", "dpapi-
 
 export interface WindowsDpapiSecretStoreOptions {
   failurePoint?: "after_existing_target_hardened" | "before_final_target_acl";
+  platform?: NodeJS.Platform;
 }
 
 const protectScript = String.raw`
@@ -107,53 +108,119 @@ try {
 const readScript = String.raw`
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
-$protected = [System.IO.File]::ReadAllBytes($env:LYJ_WORKBENCH_SECRET_PATH)
-$plaintext = [System.Security.Cryptography.ProtectedData]::Unprotect($protected, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+$inputStream = [Console]::OpenStandardInput()
+$memory = New-Object System.IO.MemoryStream
+$protected = $null
+$plaintext = $null
 try {
+  $inputStream.CopyTo($memory)
+  $protected = $memory.ToArray()
+  $plaintext = [System.Security.Cryptography.ProtectedData]::Unprotect($protected, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
   $output = [Console]::OpenStandardOutput()
   $output.Write($plaintext, 0, $plaintext.Length)
   $output.Flush()
 } finally {
-  [Array]::Clear($plaintext, 0, $plaintext.Length)
+  if ($null -ne $plaintext) { [Array]::Clear($plaintext, 0, $plaintext.Length) }
+  if ($null -ne $protected) { [Array]::Clear($protected, 0, $protected.Length) }
+  $memory.Dispose()
 }
 `;
+
+const inheritedEnvironmentKeys = [
+  "APPDATA", "ComSpec", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PATH", "PATHEXT",
+  "ProgramData", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "WINDIR"
+] as const;
 
 function validateSecretName(name: string): void {
   if (!allowedSecretNames.has(name)) throw new Error("Unsupported secret name");
 }
 
-async function runPowerShell(script: string, secretPath: string, standardInput?: Buffer, environment: Record<string, string> = {}): Promise<Buffer> {
-  if (process.platform !== "win32") throw new Error("Windows DPAPI is available only on Windows");
-  const encodedScript = Buffer.from(script, "utf16le").toString("base64");
+function requireWindows(platform: NodeJS.Platform): void {
+  if (platform !== "win32") throw new Error("Windows DPAPI is available only on Windows");
+}
+
+function createPowerShellEnvironment(environment: Record<string, string>): NodeJS.ProcessEnv {
+  const inherited: NodeJS.ProcessEnv = {};
+  for (const key of inheritedEnvironmentKeys) {
+    const value = process.env[key];
+    if (value !== undefined) inherited[key] = value;
+  }
+  return { ...inherited, ...environment };
+}
+
+function sameFile(before: Stats, after: Stats): boolean {
+  return before.dev === after.dev && before.ino === after.ino;
+}
+
+async function runPowerShell(platform: NodeJS.Platform, script: string, standardInput?: Buffer, environment: Record<string, string> = {}): Promise<Buffer> {
+  requireWindows(platform);
+  const scriptBytes = Buffer.from(script, "utf16le");
+  const encodedScript = scriptBytes.toString("base64");
+  scriptBytes.fill(0);
 
   return new Promise((resolve, reject) => {
     const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", encodedScript], {
-      env: { ...process.env, ...environment, LYJ_WORKBENCH_SECRET_PATH: secretPath },
+      env: createPowerShellEnvironment(environment),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true
     });
     const output: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
-    child.stderr.resume();
-    child.once("error", () => reject(new Error("Windows DPAPI operation failed")));
-    child.once("close", (code) => {
-      if (code === 0) resolve(Buffer.concat(output));
-      else reject(new Error("Windows DPAPI operation failed"));
+    let settled = false;
+    const clearOutput = () => {
+      for (const chunk of output) chunk.fill(0);
+      output.length = 0;
+    };
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      clearOutput();
+      reject(new Error("Windows DPAPI operation failed"));
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      const result = Buffer.concat(output);
+      clearOutput();
+      resolve(result);
+    };
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (settled) chunk.fill(0);
+      else output.push(chunk);
     });
-    child.stdin.end(standardInput);
+    child.stdout.once("error", fail);
+    child.stderr.resume();
+    child.stderr.once("error", fail);
+    child.stdin.once("error", fail);
+    child.once("error", fail);
+    child.once("close", (code) => {
+      if (code === 0) succeed();
+      else fail();
+    });
+    try {
+      child.stdin.end(standardInput);
+    } catch {
+      fail();
+    }
   });
 }
 
 export class WindowsDpapiSecretStore implements SecretStore {
   public constructor(private readonly secretsDir: string, private readonly options: WindowsDpapiSecretStoreOptions = {}) {}
 
+  private get platform(): NodeJS.Platform {
+    return this.options.platform ?? process.platform;
+  }
+
   public async protectSecret(name: string, plaintext: string): Promise<void> {
     validateSecretName(name);
+    requireWindows(this.platform);
     const bytes = Buffer.from(plaintext, "utf8");
     try {
-      await runPowerShell(protectScript, join(this.secretsDir, `${name}.bin`), bytes, {
-        LYJ_WORKBENCH_DPAPI_FAILURE_POINT: this.options.failurePoint ?? ""
+      const output = await runPowerShell(this.platform, protectScript, bytes, {
+        LYJ_WORKBENCH_DPAPI_FAILURE_POINT: this.options.failurePoint ?? "",
+        LYJ_WORKBENCH_SECRET_PATH: join(this.secretsDir, `${name}.bin`)
       });
+      output.fill(0);
     } finally {
       bytes.fill(0);
     }
@@ -161,17 +228,35 @@ export class WindowsDpapiSecretStore implements SecretStore {
 
   public async readSecret(name: string): Promise<string | null> {
     validateSecretName(name);
+    requireWindows(this.platform);
     const path = join(this.secretsDir, `${name}.bin`);
+    let before: Stats;
     try {
-      await access(path, constants.F_OK);
-    } catch {
-      return null;
+      before = await lstat(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw new Error("Windows DPAPI operation failed");
     }
-    const bytes = await runPowerShell(readScript, path);
+    if (!before.isFile() || before.isSymbolicLink()) throw new Error("Windows DPAPI operation failed");
+
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let protectedBytes: Buffer | undefined;
     try {
-      return bytes.toString("utf8");
+      handle = await open(path, "r");
+      const opened = await handle.stat();
+      if (!opened.isFile() || !sameFile(before, opened)) throw new Error("Windows DPAPI operation failed");
+      protectedBytes = await handle.readFile();
+      const bytes = await runPowerShell(this.platform, readScript, protectedBytes);
+      try {
+        return bytes.toString("utf8");
+      } finally {
+        bytes.fill(0);
+      }
+    } catch {
+      throw new Error("Windows DPAPI operation failed");
     } finally {
-      bytes.fill(0);
+      if (protectedBytes) protectedBytes.fill(0);
+      if (handle) await handle.close().catch(() => undefined);
     }
   }
 }

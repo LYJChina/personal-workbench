@@ -39,7 +39,7 @@ describe("VaultGate", () => {
     await user.type(confirmation, "different");
     await user.click(screen.getByRole("button", { name: "设置并进入工作台" }));
     expect(screen.getByRole("alert")).toHaveTextContent("两次输入的主密码不一致");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await user.clear(password);
     await user.clear(confirmation);
@@ -47,7 +47,7 @@ describe("VaultGate", () => {
     await user.type(confirmation, "short-match");
     await user.click(screen.getByRole("button", { name: "设置并进入工作台" }));
     expect(screen.getByRole("alert")).toHaveTextContent("主密码须为 12 至 1024 个字符");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await user.clear(password);
     await user.clear(confirmation);
@@ -59,6 +59,47 @@ describe("VaultGate", () => {
     expect(JSON.parse(String(setupCall?.[1]?.body))).toEqual({ masterPassword: "correct horse battery staple" });
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it("discloses detected legacy Windows keys only during first-time setup without rendering their values", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input) === "/api/vault/status") return json({ configured: false, unlocked: false });
+      if (String(input) === "/api/vault/legacy-import-status") return json({ detected: true });
+      return json({}, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VaultGate><div>受保护的工作台</div></VaultGate>);
+
+    expect(await screen.findByText("检测到旧版 Windows 密钥，将在设置主密码后迁移")).toBeVisible();
+    expect(screen.queryByText("legacy-api-value")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "/api/vault/status",
+      "/api/vault/legacy-import-status"
+    ]);
+  });
+
+  it("does not query legacy disclosure after the vault is configured", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input) === "/api/vault/status") return json({ configured: true, unlocked: false });
+      return json({}, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VaultGate><div>受保护的工作台</div></VaultGate>);
+
+    await screen.findByLabelText("主密码");
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual(["/api/vault/status"]);
+  });
+
+  it("does not start legacy disclosure after unmounting before an unconfigured status resolves", async () => {
+    let resolveStatus!: (response: Response) => void;
+    const fetchMock = vi.fn((_input: string | URL | Request) => new Promise<Response>((resolve) => { resolveStatus = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    const rendered = render(<VaultGate><div>受保护的工作台</div></VaultGate>);
+
+    rendered.unmount();
+    resolveStatus(json({ configured: false, unlocked: false }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual(["/api/vault/status"]);
   });
 
   it("shows fixed unlock errors, clears the password field, and supports cooldown", async () => {

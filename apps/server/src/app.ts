@@ -11,6 +11,11 @@ import { VaultService, type VaultScryptOptions } from "./modules/vault/vault.ser
 import { createVaultRepositoryProvider } from "./modules/vault/vault.repository.js";
 import { createVaultRouter } from "./modules/vault/vault.routes.js";
 import { VaultIntegrityError, VaultLockedError } from "./modules/vault/vault.errors.js";
+import {
+  createLegacyWindowsSecretImporter,
+  detectLegacyWindowsSecrets,
+  type LegacySecretImporter
+} from "./modules/vault/legacy-secret-import.js";
 import { createReminderRouter } from "./modules/reminders/reminder.routes.js";
 import type { NotificationChannel } from "./modules/reminders/notification-channel.js";
 import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";
@@ -25,6 +30,8 @@ export interface CreateAppOptions {
   secretStore?: SecretStore;
   vaultScrypt?: VaultScryptOptions;
   vaultMonotonicNow?: () => number;
+  platform?: NodeJS.Platform;
+  legacySecretImporter?: LegacySecretImporter;
   allowLoopbackHttp?: boolean;
   deepSeekConnectionTester?: DeepSeekConnectionTester;
   mailConnectionTester?: MailConnectionTester;
@@ -43,6 +50,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   const paths = resolveAppPaths(options);
   const vault = new VaultService(createVaultRepositoryProvider(paths), { scrypt: options.vaultScrypt });
+  const platform = options.platform ?? process.platform;
+  let legacySecretImporter: LegacySecretImporter | undefined;
+  const resolveLegacySecretImporter = (): LegacySecretImporter | undefined => {
+    if (platform !== "win32") return undefined;
+    if (legacySecretImporter) return legacySecretImporter;
+    if (!detectLegacyWindowsSecrets(paths.secretsDir, platform)) return undefined;
+    legacySecretImporter = options.legacySecretImporter ?? createLegacyWindowsSecretImporter(paths.secretsDir);
+    return legacySecretImporter;
+  };
   const secretStore = options.secretStore ?? vault;
   const deepSeekClient = options.deepSeekClient ?? new DeepSeekClient();
   const aiPolishClient = options.aiPolishClient ?? new AiPolishClient();
@@ -57,7 +73,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     response.json(HealthResponseSchema.parse({ status: "ok" }));
   });
 
-  app.use("/api", createVaultRouter({ vault, monotonicNow: options.vaultMonotonicNow }));
+  app.use("/api", createVaultRouter({ vault, resolveLegacySecretImporter, monotonicNow: options.vaultMonotonicNow }));
 
   app.use("/api", createProfileRouter(paths));
   app.use("/api", createPreferencesRouter(paths));

@@ -8,6 +8,7 @@ interface VaultGateProps {
 
 export function VaultGate({ children }: VaultGateProps) {
   const [status, setStatus] = useState<VaultStatus | null>(null);
+  const [legacyImportDetected, setLegacyImportDetected] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +17,14 @@ export function VaultGate({ children }: VaultGateProps) {
   useEffect(() => {
     let active = true;
     api.getVaultStatus()
-      .then((nextStatus) => { if (active) setStatus(nextStatus); })
+      .then((nextStatus) => {
+        if (active) setStatus(nextStatus);
+        if (active && !nextStatus.configured) {
+          void api.getLegacyImportStatus()
+            .then((legacyStatus) => { if (active) setLegacyImportDetected(legacyStatus.detected); })
+            .catch(() => undefined);
+        }
+      })
       .catch(() => { if (active) setError("无法读取本地保险库状态，请重新启动工作台"); });
     return () => { active = false; };
   }, []);
@@ -77,6 +85,7 @@ export function VaultGate({ children }: VaultGateProps) {
             ? "设置一个主密码，用于加密 API 密钥和邮箱密码。更换设备时，它将随数据库安全迁移。"
             : "输入主密码以访问保存的 API 与邮箱设置。主密码只用于本次运行，不会保存在浏览器中。"}
         </p>
+        {setupMode && legacyImportDetected && <p>检测到旧版 Windows 密钥，将在设置主密码后迁移</p>}
         <form className="vault-form" onSubmit={submit} aria-busy={submitting}>
           <label>
             <span>{setupMode ? "设置主密码" : "主密码"}</span>

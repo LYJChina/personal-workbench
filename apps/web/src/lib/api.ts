@@ -48,6 +48,7 @@ async function requestVoid(path: string, init?: RequestInit): Promise<void> {
 
 export const api = {
   getVaultStatus: () => requestJson<VaultStatus>("/vault/status"),
+  getLegacyImportStatus: () => requestJson<{ detected: boolean }>("/vault/legacy-import-status"),
   setupVault: (masterPassword: string) => requestJson<VaultStatus>("/vault/setup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
