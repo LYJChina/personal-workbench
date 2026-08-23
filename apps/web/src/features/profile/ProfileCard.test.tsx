@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProfileCard } from "./ProfileCard";
 
 const emptyProfile = {
@@ -7,10 +7,13 @@ const emptyProfile = {
   birthday: "",
   employeeNumber: "",
   customFields: [],
-  photoFilename: null
+  photoVersion: null
 };
 
 describe("ProfileCard", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
   it("sends edited personal information to its save boundary", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<ProfileCard initialProfile={emptyProfile} onSave={onSave} />);
@@ -59,5 +62,25 @@ describe("ProfileCard", () => {
 
     expect(screen.getByText("姓名：李雨佳")).toBeVisible();
     expect(screen.getByText("员工编号：LYJ-001")).toBeVisible();
+  });
+
+  it("renders the fixed photo endpoint with the stored photo version as a cache buster", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ProfileCard initialProfile={{ ...emptyProfile, name: "李雨佳", photoVersion: 4 }} onSave={onSave} />);
+
+    expect(screen.getByRole("img", { name: "李雨佳的头像" })).toHaveAttribute("src", "/api/profile/photo?v=4");
+  });
+
+  it("uses the returned upload version immediately after saving a new photo", async () => {
+    vi.stubGlobal("URL", { createObjectURL: () => "blob:preview", revokeObjectURL: () => undefined });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onUploadPhoto = vi.fn().mockResolvedValue({ ...emptyProfile, name: "李雨佳", employeeNumber: "LYJ-001", photoVersion: 9 });
+    render(<ProfileCard initialProfile={{ ...emptyProfile, name: "李雨佳", employeeNumber: "LYJ-001" }} onSave={onSave} onUploadPhoto={onUploadPhoto} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑个人信息" }));
+    fireEvent.change(screen.getByLabelText("头像"), { target: { files: [new File(["photo"], "portrait.png", { type: "image/png" })] } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByRole("img", { name: "李雨佳的头像" })).toHaveAttribute("src", "/api/profile/photo?v=9");
   });
 });

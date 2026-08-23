@@ -49,7 +49,7 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
     <section aria-label="个人信息" className="profile-card">
       <div className="profile-hero">
         <div className="profile-avatar">
-          {profile.photoFilename ? <img src={`/api/profile/photo/${profile.photoFilename}`} alt={`${profile.name}的头像`} /> : <span>{profile.name.trim().slice(0, 1).toUpperCase() || "LYJ"}</span>}
+          {profile.photoVersion !== null ? <img src={`/api/profile/photo?v=${profile.photoVersion}`} alt={`${profile.name}的头像`} /> : <span>{profile.name.trim().slice(0, 1).toUpperCase() || "LYJ"}</span>}
         </div>
         <div className="profile-identity"><span className="eyebrow">MY PROFILE</span><h2>{profile.name || "你好，欢迎回来"}</h2><p>{profile.employeeNumber ? `员工编号 ${profile.employeeNumber}` : "完善个人信息，让工作台真正属于你"}</p></div>
         <button aria-label="编辑个人信息" className="button-secondary compact" type="button" onClick={() => { setFeedback(null); setEditing(true); }}><Icon name="edit" size={16} />编辑资料</button>

@@ -32,7 +32,7 @@ export const ProfileSchema = z.object({
   birthday: z.string(),
   employeeNumber: z.string(),
   customFields: z.array(CustomFieldSchema),
-  photoFilename: z.string().nullable()
+  photoVersion: z.number().int().positive().nullable()
 });
 
 export const ProfileUpdateSchema = ProfileSchema.pick({

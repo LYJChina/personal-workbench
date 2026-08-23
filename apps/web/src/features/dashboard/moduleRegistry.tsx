@@ -19,7 +19,7 @@ const emptyProfile: ProfileResponse = {
   birthday: "",
   employeeNumber: "",
   customFields: [],
-  photoFilename: null
+  photoVersion: null
 };
 
 function ProfileModule() {

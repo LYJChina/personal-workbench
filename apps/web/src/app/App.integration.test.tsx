@@ -38,7 +38,7 @@ describe("complete application navigation", () => {
       if (path === "/api/preferences/layout" && method === "PUT") return json(JSON.parse(String(init?.body)));
       if (path === "/api/preferences/theme" && method === "GET") return json({ theme: "light" });
       if (path === "/api/preferences/theme" && method === "PUT") return json(JSON.parse(String(init?.body)));
-      if (path === "/api/profile") return json({ name: "LYJ", birthday: "", employeeNumber: "001", customFields: [], photoFilename: null });
+      if (path === "/api/profile") return json({ name: "LYJ", birthday: "", employeeNumber: "001", customFields: [], photoVersion: null });
       if (path === "/api/ai-chat/messages") return json([]);
       if (path === "/api/daily-reports") return json([]);
       if (path === "/api/ai-polish") return json([]);

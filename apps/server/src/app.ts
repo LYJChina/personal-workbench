@@ -1,6 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { HealthResponseSchema } from "@workbench/contracts";
 import { resolveAppPaths } from "./config/paths.js";
+import { openDatabase } from "./db/database.js";
 import { createProfileRouter, isPhotoUploadLimitError } from "./modules/profile/profile.routes.js";
 import { createPreferencesRouter } from "./modules/preferences/preferences.routes.js";
 import { createDailyReportRouter } from "./modules/daily-reports/daily-report.routes.js";
@@ -44,6 +45,7 @@ export interface CreateAppOptions {
   now?: () => Date;
   webDistDir?: string;
   instanceToken?: string;
+  profileDatabaseOpener?: typeof openDatabase;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -75,7 +77,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   app.use("/api", createVaultRouter({ vault, resolveLegacySecretImporter, monotonicNow: options.vaultMonotonicNow }));
 
-  app.use("/api", createProfileRouter(paths));
+  app.use("/api", createProfileRouter(paths, { openDatabase: options.profileDatabaseOpener }));
   app.use("/api", createPreferencesRouter(paths));
   app.use("/api", createDailyReportRouter(paths, {
     secretStore,
@@ -130,7 +132,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
     response.status(404).json({ error: { message: "Not Found", code: "NOT_FOUND" } });
   });
 
-  app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+  app.use((error: unknown, request: Request, response: Response, _next: NextFunction) => {
+    if (request.aborted || response.destroyed) return;
     if (isPhotoUploadLimitError(error)) {
       response.status(413).json({ error: { message: "Profile photo must be 5 MB or smaller", code: "PAYLOAD_TOO_LARGE" } });
       return;

@@ -1,14 +1,36 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync } from "node:fs";
+import type { Stats } from "node:fs";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
 import type { AppPaths } from "../config/paths.js";
+import { isUsablePhotoVersion } from "../modules/profile/photo-version.js";
 
 interface TableColumn { name: string; }
 interface TableDefinition { sql: string | null; }
+interface LegacyProfilePhotoRow { photo_filename: string | null; photo_blob: Buffer | null; }
+
+const maxPhotoBytes = 5 * 1024 * 1024;
+const migrationLockBudgetMs = 5_000;
+const busyRetrySignal = new Int32Array(new SharedArrayBuffer(4));
+
+export interface LegacyPhotoFileSystem {
+  lstat(path: string): Stats;
+  realpath(path: string): string;
+  open(path: string, flags: number): number;
+  fstat(fd: number): Stats;
+  readFile(fd: number): Buffer;
+  close(fd: number): void;
+}
+
+const nativeLegacyPhotoFileSystem: LegacyPhotoFileSystem = {
+  lstat: lstatSync, realpath: realpathSync, open: openSync, fstat: fstatSync, readFile: readFileSync, close: closeSync
+};
 
 export interface OpenDatabaseOptions {
   createDatabase?: (databasePath: string) => Database.Database;
   loadMigration?: (primaryUrl: URL, fallbackUrl: URL) => string;
   migrateHistory?: (database: Database.Database) => void;
+  legacyPhotoFileSystem?: LegacyPhotoFileSystem;
 }
 
 function loadMigration(primaryUrl: URL, fallbackUrl: URL): string {
@@ -65,21 +87,143 @@ function migrateAiPolishHistory(database: Database.Database): void {
   })();
 }
 
+function identifyImageMime(bytes: Buffer): "image/jpeg" | "image/png" | "image/webp" | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
+function isSafeLegacyPhotoFilename(filename: string): boolean {
+  return /^[a-f0-9-]+\.(?:jpg|png|webp)$/.test(filename)
+    && !filename.includes("\0")
+    && !isAbsolute(filename)
+    && !/[\\/:]/.test(filename)
+    && basename(filename) === filename;
+}
+
+function sameFileIdentity(left: { dev: number; ino: number }, right: { dev: number; ino: number }): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function readSafeLegacyPhoto(paths: AppPaths, filename: string, filesystem: LegacyPhotoFileSystem): { bytes: Buffer; mimeType: "image/jpeg" | "image/png" | "image/webp" } | null {
+  if (!isSafeLegacyPhotoFilename(filename)) return null;
+
+  try {
+    const uploadsRoot = resolve(paths.uploadsDir);
+    const rootEntry = filesystem.lstat(uploadsRoot);
+    if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink()) return null;
+    const canonicalRoot = filesystem.realpath(uploadsRoot);
+    const candidate = resolve(join(uploadsRoot, filename));
+    if (candidate !== join(uploadsRoot, filename) || !candidate.startsWith(`${uploadsRoot}${sep}`)) return null;
+
+    const before = filesystem.lstat(candidate);
+    if (!before.isFile() || before.isSymbolicLink() || before.size > maxPhotoBytes) return null;
+    const canonicalCandidate = filesystem.realpath(candidate);
+    if (!canonicalCandidate.startsWith(`${canonicalRoot}${sep}`)) return null;
+
+    const fd = filesystem.open(candidate, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    try {
+      const opened = filesystem.fstat(fd);
+      const after = filesystem.lstat(candidate);
+      if (!opened.isFile() || opened.size > maxPhotoBytes || after.isSymbolicLink()
+        || !sameFileIdentity(before, opened) || !sameFileIdentity(after, opened)) return null;
+
+      const bytes = filesystem.readFile(fd);
+      const finalState = filesystem.fstat(fd);
+      if (bytes.length > maxPhotoBytes || finalState.size > maxPhotoBytes || !sameFileIdentity(opened, finalState)) return null;
+      const rootAfter = filesystem.lstat(uploadsRoot);
+      if (!rootAfter.isDirectory() || rootAfter.isSymbolicLink() || !sameFileIdentity(rootEntry, rootAfter) || filesystem.realpath(uploadsRoot) !== canonicalRoot) return null;
+      const mimeType = identifyImageMime(bytes);
+      return mimeType ? { bytes, mimeType } : null;
+    } finally {
+      filesystem.close(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
+function migrateProfilePhotos(database: Database.Database, paths: AppPaths, filesystem: LegacyPhotoFileSystem): void {
+  const columns = database.pragma("table_info(profile)") as TableColumn[];
+  const existingColumns = new Set(columns.map((column) => column.name));
+  if (!existingColumns.has("photo_blob")) database.exec("ALTER TABLE profile ADD COLUMN photo_blob BLOB");
+  if (!existingColumns.has("photo_mime")) database.exec("ALTER TABLE profile ADD COLUMN photo_mime TEXT");
+  if (!existingColumns.has("photo_version")) database.exec("ALTER TABLE profile ADD COLUMN photo_version INTEGER NOT NULL DEFAULT 0");
+
+  const profile = database.prepare("SELECT photo_filename, photo_blob, photo_mime, photo_version FROM profile WHERE id = 1").get() as (LegacyProfilePhotoRow & { photo_mime: string | null; photo_version: unknown }) | undefined;
+  if (!profile) return;
+  const storedMime = Buffer.isBuffer(profile.photo_blob) ? identifyImageMime(profile.photo_blob) : null;
+  if (profile.photo_blob !== null && !storedMime) {
+    database.prepare("UPDATE profile SET photo_blob = NULL, photo_mime = NULL, photo_version = 0 WHERE id = 1").run();
+  } else if (storedMime) {
+    const needsMimeRepair = profile.photo_mime !== storedMime;
+    const needsVersionRepair = !isUsablePhotoVersion(profile.photo_version);
+    if (needsMimeRepair || needsVersionRepair) database.prepare("UPDATE profile SET photo_mime = ?, photo_version = ? WHERE id = 1").run(storedMime, needsVersionRepair ? 1 : profile.photo_version);
+    return;
+  }
+  const recoverable = database.prepare("SELECT photo_filename, photo_blob FROM profile WHERE id = 1").get() as LegacyProfilePhotoRow | undefined;
+  if (!recoverable || recoverable.photo_blob !== null || recoverable.photo_filename === null) return;
+  const legacyPhoto = readSafeLegacyPhoto(paths, recoverable.photo_filename, filesystem);
+  if (!legacyPhoto) return;
+
+  database.prepare(`
+      UPDATE profile
+      SET photo_blob = ?, photo_mime = ?, photo_version = 1
+      WHERE id = 1 AND photo_blob IS NULL
+    `).run(legacyPhoto.bytes, legacyPhoto.mimeType);
+}
+
+function migrateProfilePhotosAtomically(database: Database.Database, paths: AppPaths, filesystem: LegacyPhotoFileSystem): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    migrateProfilePhotos(database, paths, filesystem);
+    database.exec("COMMIT");
+  } catch (error) {
+    try { database.exec("ROLLBACK"); } catch { /* preserve migration error */ }
+    throw error;
+  }
+}
+
+function retryBusyMigration(database: Database.Database, operation: () => void): void {
+  const deadline = performance.now() + migrationLockBudgetMs;
+  let lastBusyError: unknown;
+  while (true) {
+    const remainingBeforeAttempt = deadline - performance.now();
+    if (remainingBeforeAttempt <= 0) throw lastBusyError;
+    database.pragma(`busy_timeout = ${Math.max(1, Math.min(250, Math.ceil(remainingBeforeAttempt)))}`);
+    try {
+      operation();
+      return;
+    } catch (error: unknown) {
+      if (!(error instanceof Error) || !/SQLITE_BUSY|database is locked/i.test(error.message)) throw error;
+      lastBusyError = error;
+      try { database.exec("ROLLBACK"); } catch { /* no active transaction to reset */ }
+      const remainingAfterAttempt = deadline - performance.now();
+      if (remainingAfterAttempt <= 0) throw error;
+      Atomics.wait(busyRetrySignal, 0, 0, Math.min(25, Math.ceil(remainingAfterAttempt)));
+    }
+  }
+}
+
 export function openDatabase(paths: AppPaths, options: OpenDatabaseOptions = {}): Database.Database {
   mkdirSync(paths.uploadsDir, { recursive: true });
   const database = (options.createDatabase ?? ((databasePath) => new Database(databasePath)))(paths.databasePath);
   try {
     database.pragma("foreign_keys = ON");
     const readMigration = options.loadMigration ?? loadMigration;
-    database.exec(readMigration(
-      new URL("./migrations/001_init.sql", import.meta.url),
-      new URL("../../src/db/migrations/001_init.sql", import.meta.url)
-    ));
-    database.exec(readMigration(
-      new URL("./migrations/002_generic_reminders.sql", import.meta.url),
-      new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url)
-    ));
-    (options.migrateHistory ?? migrateAiPolishHistory)(database);
+    retryBusyMigration(database, () => {
+      database.exec(readMigration(
+        new URL("./migrations/001_init.sql", import.meta.url),
+        new URL("../../src/db/migrations/001_init.sql", import.meta.url)
+      ));
+      database.exec(readMigration(
+        new URL("./migrations/002_generic_reminders.sql", import.meta.url),
+        new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url)
+      ));
+      (options.migrateHistory ?? migrateAiPolishHistory)(database);
+      migrateProfilePhotosAtomically(database, paths, options.legacyPhotoFileSystem ?? nativeLegacyPhotoFileSystem);
+    });
     return database;
   } catch (error) {
     try {
