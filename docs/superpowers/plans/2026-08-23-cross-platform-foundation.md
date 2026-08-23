@@ -15,6 +15,7 @@
 - Commit steps stage only task-owned hunks. If a listed file already contains unrelated user changes, use `git add -p` or leave that file uncommitted instead of sweeping those changes into the task commit.
 - Preserve reminder CRUD, reminder date/repetition data, SMTP settings, SMTP connection testing, and manual reminder email sending.
 - Remove automatic reminder sending, scheduler endpoints/UI, Windows Task Scheduler integration, PowerShell/VBScript reminder scripts, and their runtime tests.
+- Preserve the cross-platform security regression coverage in `apps/server/tests/security-boundaries.test.ts`: production must bind only to canonical `127.0.0.1`, SPA fallback must never turn unknown `/api/*` routes into HTML, and dependency errors containing secrets must expose neither the secret-bearing message nor secret values in the HTTP response or application logs.
 - Store user data, profile photos, encrypted secrets, and settings in `workbench.sqlite`; temporary runtime cache is not authoritative.
 - Portable secrets use a user master password, Node `scrypt`, and AES-256-GCM; plaintext secrets and the master password never enter SQLite or logs.
 - Existing Windows DPAPI blobs may be imported only by a one-time Windows adapter after explicit vault setup.
@@ -212,13 +213,13 @@ git commit -m "feat: resolve workbench data paths across platforms"
 - Create: `apps/server/tests/start-local.test.ts`
 - Modify: `package.json`
 - Modify: `apps/server/package.json`
+- Modify: `apps/server/tests/security-boundaries.test.ts`
 - Rename: `apps/server/tsconfig.reminder.json` to `apps/server/tsconfig.runtime.json`
 - Delete: `scripts/start-local.ps1`
-- Delete: `apps/server/tests/security-boundaries.test.ts`
 
 **Interfaces:**
 - Consumes: built `apps/server/dist/index.js`, built `apps/web/dist/index.html`, `--port`, and `--no-open`.
-- Produces: `pnpm local:start`, identical on Windows/macOS, with validated loopback port, health verification, optional browser open, and child cleanup.
+- Produces: `pnpm local:start`, identical on Windows/macOS, with validated loopback port, health verification, optional browser open, and child cleanup; retains server-level regression coverage for strict `127.0.0.1` binding, SPA/API 404 separation, and sanitized dependency failures.
 
 - [ ] **Step 1: Write launcher behavior tests around exported pure helpers**
 
@@ -227,41 +228,118 @@ git commit -m "feat: resolve workbench data paths across platforms"
 ```js
 export function parseStartArguments(argv) {}
 export function browserCommand(platform, url) {}
+export function buildChildEnvironment(env, { port, instanceToken }) {}
 export async function waitForOwnedHealth(input) {}
+export async function runLocalLauncher(options, dependencies) {}
+export async function main(argv = process.argv.slice(2)) {}
 ```
 
-Assert `--port 43123`, `--no-open`, invalid ports, Windows `explorer.exe`, macOS `open`, instance-token health ownership, timeout, and child-exit failure.
+Assert `--port 43123`, `--no-open`, invalid ports, Windows `explorer.exe`, macOS `open`, instance-token health ownership, timeout, and child-exit failure. Add a failing environment test with `PATH`, `HOME`, `SystemRoot`, `LOCALAPPDATA`, `APPDATA`, `LYJ_SECRET_SENTINEL`, `DEEPSEEK_API_KEY`, `SMTP_PASSWORD`, and an arbitrary application variable: the result must preserve `LOCALAPPDATA` and `APPDATA` so `resolveDefaultDataDir()` can find the Windows data directory, keep only the remaining operational allowlist plus launcher-owned values, and contain none of the secret/application inputs regardless of input-key casing. Include explicit assertions equivalent to:
+
+```ts
+expect(childEnv.LOCALAPPDATA).toBe(parentEnv.LOCALAPPDATA);
+expect(childEnv.APPDATA).toBe(parentEnv.APPDATA);
+expect(JSON.stringify(childEnv)).not.toMatch(/LYJ_SECRET_SENTINEL|DEEPSEEK_API_KEY|SMTP_PASSWORD|must-not-reach-child/i);
+```
+
+The production spawn options must consume this returned object directly; no test or implementation may spread `process.env` into the server child.
+
+Test `runLocalLauncher()` through injected `spawnServer`, `waitForOwnedHealth`, `openBrowser`, and signal-subscription functions. Cover all of these lifecycle failures:
+
+```ts
+await expect(runLocalLauncher(options, dependenciesWithRejectedHealth)).rejects.toThrow();
+expect(exactChild.kill).toHaveBeenCalledTimes(1);
+expect(openBrowser).not.toHaveBeenCalled();
+
+await expect(runLocalLauncher(options, dependenciesWithIncumbentHealthButWrongToken)).rejects.toThrow();
+expect(exactChild.kill).toHaveBeenCalledTimes(1);
+expect(openBrowser).not.toHaveBeenCalled();
+```
+
+The second case represents a port collision: an incumbent `/api/health` responder returns 200 without the launched instance token while the launched child exits. Also verify `SIGINT` and `SIGTERM` terminate and await the exact spawned child, successful owned health opens the browser at most once, and `--no-open` never calls `openBrowser`.
+
+Add an import-safety test that imports `scripts/start-local.mjs` in a short-lived Node subprocess and expects exit code 0 without binding a port or spawning the server. This test enforces the ESM main-entry guard: importing helpers must have no startup side effects.
+
+Move only the PowerShell-launcher-specific fixture cases out of `apps/server/tests/security-boundaries.test.ts` and express their platform-neutral equivalents against these Node helpers; do not remove the server security cases from that file.
+
+Keep the following assertions in `apps/server/tests/security-boundaries.test.ts` as permanent, launcher-independent regressions:
+
+```ts
+expect(resolveServerHost(undefined)).toBe("127.0.0.1");
+expect(resolveServerHost("127.0.0.1")).toBe("127.0.0.1");
+expect(() => resolveServerHost("0.0.0.0")).toThrow("HOST must be exactly 127.0.0.1");
+
+expect(clientRoute.status).toBe(200);
+expect(apiRoute.status).toBe(404);
+expect(apiRoute.type).toMatch(/json/);
+expect(apiRoute.body).toEqual({ error: { message: "Not Found", code: "NOT_FOUND" } });
+
+expect(response.body).toEqual({ error: { message: "Internal Server Error", code: "INTERNAL_ERROR" } });
+expect(JSON.stringify(response.body)).not.toMatch(/Bearer|api[_-]?key|smtp|server-secret|mail-secret/i);
+expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(/Bearer|api[_-]?key|smtp|server-secret|mail-secret/i);
+```
 
 - [ ] **Step 2: Run the test and verify it fails**
 
 Run:
 
 ```bash
-pnpm --filter @workbench/server test -- tests/start-local.test.ts
+pnpm --filter @workbench/server test -- tests/start-local.test.ts tests/security-boundaries.test.ts
 ```
 
-Expected: FAIL because the Node launcher does not exist.
+Expected: the new launcher tests FAIL because the Node launcher does not exist, while the launcher-independent security boundary cases continue to PASS.
 
 - [ ] **Step 3: Implement the Node launcher**
 
-Spawn the server without a shell:
+Build the child environment from a small cross-platform operational allowlist. Match inherited names case-insensitively for Windows, preserve the original matched key spelling, ignore undefined values, and then set the four launcher-owned values. This function must be the only source of `spawnOptions.env`:
 
 ```js
-const child = spawn(process.execPath, [serverEntry], {
-  cwd: projectRoot,
-  env: {
-    ...process.env,
+const CHILD_ENV_ALLOWLIST = new Set([
+  "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
+  "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA",
+  "LANG", "LC_ALL", "TZ", "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR",
+]);
+
+export function buildChildEnvironment(env, { port, instanceToken }) {
+  const childEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && CHILD_ENV_ALLOWLIST.has(key.toUpperCase())) {
+      childEnv[key] = value;
+    }
+  }
+  return {
+    ...childEnv,
     NODE_ENV: "production",
     HOST: "127.0.0.1",
     PORT: String(port),
     LYJ_WORKBENCH_INSTANCE_TOKEN: instanceToken,
-  },
+  };
+}
+
+const child = spawn(process.execPath, [serverEntry], {
+  cwd: projectRoot,
+  env: buildChildEnvironment(process.env, { port, instanceToken }),
   stdio: "inherit",
   windowsHide: true,
 });
 ```
 
-Open only the fixed loopback URL after the health endpoint returns the matching instance header. Use direct `spawn("explorer.exe", [url])` on Windows and `spawn("open", [url])` on macOS; do not use a shell. Forward `SIGINT`/`SIGTERM` to the exact child and wait for exit.
+`runLocalLauncher(options, dependencies)` owns exactly one child. Put cleanup in `try/finally`: on health timeout, token mismatch followed by child exit, port collision, startup error, `SIGINT`, or `SIGTERM`, terminate that child if still alive and await its `exit`/`close` event before returning or rejecting. Call the injected `openBrowser` only after the health endpoint returns the matching instance header and only when `options.openBrowser === true`; a failed or foreign health response must never open it.
+
+Open only the fixed loopback URL. Use direct `spawn("explorer.exe", [url])` on Windows and `spawn("open", [url])` on macOS; do not use a shell. Implement the ESM entry guard so imports remain side-effect free:
+
+```js
+const entryUrl = process.argv[1]
+  ? pathToFileURL(resolve(process.argv[1])).href
+  : null;
+
+if (entryUrl === import.meta.url) {
+  main().catch(() => {
+    console.error("Local launcher failed");
+    process.exitCode = 1;
+  });
+}
+```
 
 - [ ] **Step 4: Update build and root scripts**
 
@@ -280,12 +358,12 @@ Rename the server emit config to describe the whole runtime and make `build` use
 Run:
 
 ```bash
-pnpm --filter @workbench/server test -- tests/start-local.test.ts tests/health.test.ts
+pnpm --filter @workbench/server test -- tests/start-local.test.ts tests/health.test.ts tests/security-boundaries.test.ts
 pnpm build
 node scripts/start-local.mjs --no-open --port 43123
 ```
 
-Expected: tests and build PASS; the final command prints `LYJ Workbench is ready at http://127.0.0.1:43123`. Stop it with `Ctrl+C` and verify the port no longer listens.
+Expected: tests and build PASS, including import safety, sensitive-environment stripping, exact-child cleanup, no browser open on health failure/port collision, strict canonical loopback rejection, client-route SPA fallback with JSON `/api/*` 404 behavior, and response/log redaction of secret-bearing dependency errors; the final command prints `LYJ Workbench is ready at http://127.0.0.1:43123`. Stop it with `Ctrl+C` and verify the port no longer listens.
 
 - [ ] **Step 6: Commit**
 
@@ -665,6 +743,7 @@ Document the same four commands for both platforms, both data paths, vault unloc
 Run:
 
 ```bash
+pnpm --filter @workbench/server test -- tests/security-boundaries.test.ts
 pnpm test
 pnpm check
 pnpm build
@@ -672,7 +751,7 @@ git diff --check
 rg -n -i "powershell|\.ps1|\.vbs|wscript|scheduledtask|windows task scheduler" apps packages scripts package.json README.md --glob '!**/legacy-windows-dpapi.ts'
 ```
 
-Expected: tests/check/build PASS; diff check is clean; the final search finds no runtime dependency outside the explicitly named one-time legacy importer documentation/code.
+Expected: the focused security suite first proves canonical `127.0.0.1` binding, SPA/API 404 separation, and response/log secret redaction; all tests/check/build PASS; diff check is clean; the final search finds no runtime dependency outside the explicitly named one-time legacy importer documentation/code.
 
 - [ ] **Step 8: Commit**
 
@@ -686,7 +765,7 @@ git commit -m "feat: establish cross-platform workbench foundation"
 Before starting the plugin-kernel plan:
 
 1. Run the full Task 8 verification on Windows.
-2. Require the macOS CI job to pass install, test, check, build, launcher helper tests, vault tests, database migration tests, and backup tests.
+2. Require the macOS CI job to pass install, test, check, build, launcher helper tests, `security-boundaries.test.ts`, vault tests, database migration tests, and backup tests.
 3. Manually move an exported test database from one platform to the other, unlock it with the same master password, and verify AI/SMTP configured state without sending a real model request or email.
 4. Verify reminder CRUD and manual test-send remain visible while scheduler controls and automatic runner artifacts are absent.
 5. Record any intentionally retained Windows-only code as legacy import code with no normal-runtime call path.

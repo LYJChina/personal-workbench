@@ -21,6 +21,32 @@ function createApi(overrides: Partial<AiChatCardApi> = {}): AiChatCardApi {
 afterEach(() => vi.restoreAllMocks());
 
 describe("AI chat dashboard card", () => {
+  it("does not allow sending until the local conversation finishes loading", async () => {
+    let finishLoading!: (messages: AiChatMessage[]) => void;
+    const api = createApi({
+      listMessages: vi.fn().mockImplementation(() => new Promise<AiChatMessage[]>((resolve) => {
+        finishLoading = resolve;
+      }))
+    });
+    render(<AiChatCard api={api} />);
+
+    const textbox = screen.getByRole("textbox", { name: "输入问题" });
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    const newConversationButton = screen.getByRole("button", { name: "新对话" });
+    expect(textbox).toBeDisabled();
+    expect(sendButton).toBeDisabled();
+    expect(newConversationButton).toBeDisabled();
+
+    fireEvent.change(textbox, { target: { value: "加载期间的问题" } });
+    fireEvent.submit(sendButton.closest("form")!);
+    fireEvent.click(newConversationButton);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(api.clearMessages).not.toHaveBeenCalled();
+
+    finishLoading(existing);
+    await waitFor(() => expect(textbox).toBeEnabled());
+  });
+
   it("loads the local conversation and sends with Enter", async () => {
     const user = userEvent.setup();
     const api = createApi();

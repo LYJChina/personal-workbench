@@ -71,6 +71,7 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
   }
 
   function updateLayout(next: Layout) {
+    if (columns === 4) return;
     setLayout((current) => current.map((item) => {
       const changed = next.find((candidate) => candidate.i === item.moduleId);
       return changed ? { ...item, x: changed.x, y: changed.y, w: changed.w, h: changed.h } : item;

@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DashboardLayout, NavigationItem } from "@workbench/contracts";
 import { SidebarEditor } from "./SidebarEditor";
 import { EditableDashboard } from "./EditableDashboard";
@@ -17,6 +17,8 @@ const navigation: NavigationItem[] = [
   { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 3, visible: true, disabled: true },
   { id: "settings", label: "设置", path: "/settings", position: 4, visible: true, disabled: false }
 ];
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("EditableDashboard", () => {
   it("shows only a compact daily quote in the dashboard header", () => {
@@ -59,6 +61,39 @@ describe("EditableDashboard", () => {
 
     expect(await screen.findByText("网络不可用")).toHaveAttribute("role", "alert");
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "true");
+  });
+
+  it("preserves the desktop layout after viewing and editing on a narrow screen", async () => {
+    const desktopLayout: DashboardLayout[] = [
+      { moduleId: "profile", x: 8, y: 0, w: 8, h: 5, enabled: true }
+    ];
+    let resize: (width: number) => void = () => undefined;
+
+    class TestResizeObserver implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resize = (width) => callback([
+          { contentRect: { width } } as ResizeObserverEntry
+        ], this);
+      }
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<EditableDashboard initialLayout={desktopLayout} onSave={onSave} />);
+
+    act(() => resize(600));
+    expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-columns", "4");
+    await user.click(screen.getByRole("button", { name: "编辑工作台" }));
+    act(() => resize(1200));
+    expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-columns", "16");
+    await user.click(screen.getByRole("button", { name: "完成编辑" }));
+
+    expect(onSave).toHaveBeenCalledWith(desktopLayout);
   });
 });
 

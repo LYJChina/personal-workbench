@@ -43,7 +43,7 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
 
   async function send() {
     const content = draft.trim();
-    if (!content || sending) return;
+    if (!content || loading || sending) return;
     const optimistic: AiChatMessage = {
       id: -Date.now(), role: "user", content, model: null, createdAt: new Date().toISOString()
     };
@@ -88,7 +88,7 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
   return <section className="dashboard-card ai-chat-card" aria-label="大模型对话">
     <header>
       <div className="ai-chat-title"><span className="card-icon violet"><Icon name="sparkles" size={18} /></span><div><h3>问问 AI</h3><small>使用你在设置中配置的模型</small></div></div>
-      <button className="button-ghost compact" type="button" disabled={sending} onClick={() => void clearConversation()}>新对话</button>
+      <button className="button-ghost compact" type="button" disabled={loading || sending} onClick={() => void clearConversation()}>新对话</button>
     </header>
     <div className="ai-chat-log" role="log" aria-label="大模型对话记录" aria-live="polite" ref={logRef}>
       {loading
@@ -100,8 +100,8 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
     </div>
     {error && <p className="ai-chat-error" role="alert">{error}</p>}
     <form className="ai-chat-composer" onSubmit={submit}>
-      <textarea aria-label="输入问题" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder="输入问题，Enter 发送…" rows={2} disabled={sending} />
-      <button className="button-primary compact" type="submit" disabled={sending || !draft.trim()}>发送</button>
+      <textarea aria-label="输入问题" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={loading ? "正在读取本地对话…" : "输入问题，Enter 发送…"} rows={2} disabled={loading || sending} />
+      <button className="button-primary compact" type="submit" disabled={loading || sending || !draft.trim()}>发送</button>
     </form>
   </section>;
 }
