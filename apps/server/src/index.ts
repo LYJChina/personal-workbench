@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
-import { ReminderSchedulerService } from "./modules/reminders/reminder-scheduler.js";
 import { resolveServerHost, resolveServerPort } from "./server-config.js";
 
 const host = resolveServerHost(process.env.HOST);
@@ -10,6 +9,6 @@ const webDistDir = process.env.NODE_ENV === "production"
   : undefined;
 const instanceToken = process.env.LYJ_WORKBENCH_INSTANCE_TOKEN;
 
-createApp({ webDistDir, instanceToken, reminderScheduler: ReminderSchedulerService.fromCurrentModule() }).listen(port, host, () => {
+createApp({ webDistDir, instanceToken }).listen(port, host, () => {
   console.log(`LYJ Workbench server listening on http://${host}:${port}`);
 });

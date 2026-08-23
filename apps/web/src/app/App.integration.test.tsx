@@ -48,7 +48,7 @@ describe("complete application navigation", () => {
       if (path === "/api/reminders/outbound-checkin") return json({
         id: "outbound-checkin", weekday: 1, enabled: false, localTime: "09:00", recipient: "",
         subject: "提交外勤打卡提醒", body: "请提交本周外勤打卡。", nextRun: null,
-        schedulerReinstallRequired: false, schedulerReinstallInstruction: "", lastSuccess: null, lastFailure: null
+        lastSuccess: null, lastFailure: null
       });
       if (path === "/api/reminders") return json({ items: [{
         id: "outbound-checkin", name: "外勤打卡", enabled: false, lifecycle: "recurring",
@@ -57,9 +57,6 @@ describe("complete application navigation", () => {
         subject: "提交外勤打卡提醒", body: "请提交本周外勤打卡。", nextRun: null, calendarBlocked: false
       }] });
       if (path === "/api/reminder-attempts") return json({ items: [] });
-      if (path === "/api/reminder-scheduler/status") return json({
-        installed: false, synchronized: false, taskName: "LYJWorkBench-ReminderRunner", message: "尚未同步"
-      });
       return json({ error: { message: `Unexpected integration request: ${method} ${path}` } }, 500);
     });
     vi.stubGlobal("fetch", fetchMock);

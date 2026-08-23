@@ -23,7 +23,6 @@ import type {
   GenericReminder,
   GenericReminderInput,
   GenericReminderAttempt,
-  SchedulerStatus,
   HolidayDay,
   SettingsResponse,
   Theme
@@ -147,8 +146,6 @@ export const api = {
   deleteGenericReminder: (id: string) => requestVoid(`/reminders/${encodeURIComponent(id)}`, { method: "DELETE" }),
   listReminderAttempts: () => requestJson<{ items: GenericReminderAttempt[] }>("/reminder-attempts"),
   testGenericReminder: (id: string) => requestJson<ReminderTestResult>(`/reminders/${encodeURIComponent(id)}/test`, { method: "POST" }),
-  getReminderSchedulerStatus: () => requestJson<SchedulerStatus>("/reminder-scheduler/status"),
-  syncReminderScheduler: () => requestJson<SchedulerStatus>("/reminder-scheduler/sync", { method: "POST" }),
   getCalendar: (from: string, to: string) => requestJson<{ days: HolidayDay[]; coverage: Array<{ year: number; synchronizedAt: string }> }>(
     `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
   ),

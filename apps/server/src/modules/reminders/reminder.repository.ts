@@ -19,10 +19,6 @@ interface AttemptRow {
   error_category: ReminderFailureCategory | null;
 }
 
-interface SchedulerStateRow {
-  synchronized_local_time: string;
-}
-
 interface ChinaParts {
   year: number;
   month: number;
@@ -94,10 +90,6 @@ export class ReminderRepository {
     if (!row) throw new Error("Reminder not found");
     const lastSuccess = this.latestAttempt(id, "success");
     const lastFailure = this.latestAttempt(id, "failure");
-    const schedulerState = this.database.prepare(`
-      SELECT synchronized_local_time FROM reminder_scheduler_state WHERE reminder_id = ?
-    `).get(id) as SchedulerStateRow | undefined;
-    const schedulerReinstallInstruction = `powershell -NoProfile -File scripts/install-reminder-task.ps1 -LocalTime ${row.local_time}`;
     return ReminderSchema.parse({
       id: row.id,
       enabled: Boolean(row.enabled),
@@ -107,8 +99,6 @@ export class ReminderRepository {
       subject: row.subject,
       body: row.body,
       nextRun: row.enabled ? nextRun(now, row.weekday, row.local_time) : null,
-      schedulerReinstallRequired: schedulerState?.synchronized_local_time !== row.local_time,
-      schedulerReinstallInstruction,
       lastSuccess: mapAttempt(lastSuccess, false),
       lastFailure: mapAttempt(lastFailure, true)
     });
@@ -129,16 +119,6 @@ export class ReminderRepository {
       WHERE reminder_id = ? AND local_date = ? AND status = 'success'
     `).get(id, localDate);
     return Boolean(row);
-  }
-
-  public markSchedulerSynchronized(id: ReminderId, localTime: string, synchronizedAt: Date): void {
-    this.database.prepare(`
-      INSERT INTO reminder_scheduler_state (reminder_id, synchronized_local_time, synchronized_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(reminder_id) DO UPDATE SET
-        synchronized_local_time = excluded.synchronized_local_time,
-        synchronized_at = excluded.synchronized_at
-    `).run(id, localTime, synchronizedAt.toISOString());
   }
 
   public acquireDeliveryClaim(

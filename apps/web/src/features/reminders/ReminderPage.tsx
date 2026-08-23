@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import type {
   GenericReminder, GenericReminderAttempt, GenericReminderInput,
-  ReminderLifecycle, ReminderTestResult, SchedulerStatus
+  ReminderLifecycle, ReminderTestResult
 } from "@workbench/contracts";
 import { api as sharedApi } from "../../lib/api";
-import { Icon } from "../../app/Icon";
 import { ReminderEditor } from "./ReminderEditor";
 import { ReminderList } from "./ReminderList";
 import { ReminderHistory } from "./ReminderHistory";
@@ -16,8 +15,6 @@ export interface ReminderCenterApi {
   deleteReminder(id: string): Promise<void>;
   listAttempts(): Promise<{ items: GenericReminderAttempt[] }>;
   testReminder(id: string): Promise<ReminderTestResult>;
-  getSchedulerStatus(): Promise<SchedulerStatus>;
-  syncScheduler(): Promise<SchedulerStatus>;
 }
 
 const defaultApi: ReminderCenterApi = {
@@ -26,32 +23,20 @@ const defaultApi: ReminderCenterApi = {
   updateReminder: sharedApi.updateGenericReminder,
   deleteReminder: sharedApi.deleteGenericReminder,
   listAttempts: sharedApi.listReminderAttempts,
-  testReminder: sharedApi.testGenericReminder,
-  getSchedulerStatus: sharedApi.getReminderSchedulerStatus,
-  syncScheduler: sharedApi.syncReminderScheduler
+  testReminder: sharedApi.testGenericReminder
 };
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "请求失败，请稍后重试";
 }
 
-function schedulerTime(value: string): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: false
-  }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
-  return `${parts.year}年${Number(parts.month)}月${Number(parts.day)}日 ${parts.hour}:${parts.minute}`;
-}
-
 export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) {
   const [reminders, setReminders] = useState<GenericReminder[]>([]);
   const [attempts, setAttempts] = useState<GenericReminderAttempt[]>([]);
-  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [filter, setFilter] = useState<"all" | ReminderLifecycle>("all");
   const [view, setView] = useState<"pending" | "history">("pending");
   const [editing, setEditing] = useState<GenericReminder | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
   async function reload() {
@@ -62,12 +47,11 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
 
   useEffect(() => {
     let active = true;
-    Promise.all([api.listReminders(), api.listAttempts(), api.getSchedulerStatus()])
-      .then(([reminderResult, attemptResult, status]) => {
+    Promise.all([api.listReminders(), api.listAttempts()])
+      .then(([reminderResult, attemptResult]) => {
         if (!active) return;
         setReminders(reminderResult.items);
         setAttempts(attemptResult.items);
-        setScheduler(status);
         const selectedId = new URLSearchParams(window.location.search).get("selected");
         const selected = reminderResult.items.find((item) => item.id === selectedId);
         if (selected) setEditing(selected);
@@ -105,25 +89,10 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
     }
   }
 
-  async function synchronize() {
-    setSyncing(true);
-    setFeedback(null);
-    try {
-      const status = await api.syncScheduler();
-      setScheduler(status);
-      setFeedback({ kind: status.synchronized ? "success" : "error", text: status.message });
-    } catch (error) {
-      setFeedback({ kind: "error", text: message(error) });
-    } finally {
-      setSyncing(false);
-    }
-  }
-
   if (loading) return <section className="page-loading"><span className="spinner" />正在加载提醒事项…</section>;
 
   return <section className="reminder-page reminder-center-page">
-    <header className="page-heading reminder-center-heading"><div><span className="eyebrow">AUTOMATION</span><h2>提醒事项</h2><p>管理一次性、有限次数和常驻邮件提醒。</p></div><div className="heading-actions"><button type="button" className="button-secondary" disabled={syncing} onClick={() => void synchronize()}><Icon name="clock" size={17} />{syncing ? "同步中…" : "同步系统计划"}</button><button type="button" className="button-primary" onClick={() => setEditing(null)}>新建提醒</button></div></header>
-    <div className={`scheduler-banner ${scheduler?.synchronized ? "success" : "warning"}`}><div><strong>{scheduler?.synchronized ? "系统计划已同步" : "系统计划尚未同步"}</strong><p>{scheduler?.message ?? "无法读取系统计划状态"}</p>{scheduler?.nextRun && <p>下次执行：{schedulerTime(scheduler.nextRun)}</p>}</div><span className="status-chip neutral">{scheduler?.taskName ?? "LYJWorkBench-ReminderRunner"}</span></div>
+    <header className="page-heading reminder-center-heading"><div><span className="eyebrow">REMINDERS</span><h2>提醒事项</h2><p>管理提醒事项，需要时可手动发送邮件。</p></div><div className="heading-actions"><button type="button" className="button-primary" onClick={() => setEditing(null)}>新建提醒</button></div></header>
     {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`feedback-banner ${feedback.kind}`}>{feedback.text}</p>}
     <div className="reminder-workspace">
       <div className="reminder-workspace-topbar">

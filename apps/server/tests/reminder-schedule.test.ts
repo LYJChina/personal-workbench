@@ -75,20 +75,17 @@ describe("holiday-aware reminder schedules", () => {
   });
 
   it("synchronizes requested holiday years and returns cached calendar data", async () => {
-    const scheduler = { status: vi.fn(), sync: vi.fn().mockResolvedValue({ installed: false, synchronized: true, taskName: "LYJWorkBench-ReminderRunner", message: "暂无提醒" }) };
     const app = createApp({
       dataDir: tempDir,
       holidayYearLoader: async (year: number) => year === 2026 ? [
         { localDate: "2026-10-01", dayType: "holiday", name: "国庆节" },
         { localDate: "2026-10-10", dayType: "makeup_workday", name: "国庆节调休" }
       ] : null,
-      now: () => new Date("2026-08-18T00:00:00.000Z"),
-      reminderScheduler: scheduler
+      now: () => new Date("2026-08-18T00:00:00.000Z")
     });
 
     const synchronized = await request(app).post("/api/calendar/sync").send({ years: [2026, 2027] });
     expect(synchronized.status).toBe(200);
-    expect(scheduler.sync).toHaveBeenCalledTimes(1);
     expect(synchronized.body).toEqual({ updatedYears: [2026], unavailableYears: [2027] });
     const calendar = await request(app).get("/api/calendar?from=2026-10-01&to=2026-10-10");
     expect(calendar.body.coverage[0].year).toBe(2026);

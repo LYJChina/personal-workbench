@@ -3,10 +3,12 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "predev": "node scripts/retire-legacy-reminder-tasks.mjs",
     "dev": "pnpm --parallel --filter @workbench/server --filter @workbench/web dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "check": "pnpm -r check",
+    "prelocal:start": "node scripts/retire-legacy-reminder-tasks.mjs",
     "local:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1"
   },
   "devDependencies": {

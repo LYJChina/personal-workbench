@@ -20,6 +20,7 @@
 - Portable secrets use a user master password, Node `scrypt`, and AES-256-GCM; plaintext secrets and the master password never enter SQLite or logs.
 - Existing Windows DPAPI blobs may be imported only by a one-time Windows adapter after explicit vault setup.
 - No task may introduce platform-specific commands outside the platform adapter or legacy migration adapter.
+- Task 1 may invoke `schtasks.exe` only through the tested Windows-only legacy retirement adapter. This one-way migration may query and delete the two exact historical root tasks; it must never create, update, enable, or synchronize a task, and non-Windows platforms must not spawn it.
 - Every behavior change follows red-green TDD and ends with focused verification before commit.
 
 ---
@@ -34,6 +35,9 @@
 - Modify: `apps/server/src/modules/reminders/reminder.routes.ts`
 - Modify: `apps/server/src/modules/reminders/reminder.repository.ts`
 - Modify: `apps/server/package.json`
+- Modify: `package.json`
+- Modify: `README.md`
+- Modify: `scripts/prepare-backup.ps1`
 - Modify: `apps/web/src/lib/api.ts`
 - Modify: `apps/web/src/features/reminders/ReminderPage.tsx`
 - Modify: `apps/web/src/features/reminders/ReminderPage.test.tsx`
@@ -49,12 +53,19 @@
 - Delete: `scripts/sync-reminder-task.ps1`
 - Delete: `scripts/uninstall-reminder-task.ps1`
 - Delete: `scripts/run-reminders-hidden.vbs`
+- Create: `scripts/clean-server-dist.mjs`
+- Create: `scripts/clean-server-dist.d.mts`
+- Create: `scripts/retire-legacy-reminder-tasks.mjs`
+- Create: `scripts/retire-legacy-reminder-tasks.d.mts`
+- Create: `apps/server/tests/server-build-clean.test.ts`
+- Create: `apps/server/tests/legacy-reminder-retirement.test.ts`
+- Modify: `apps/server/tests/backup-preparation.test.ts`
 - Test: `apps/server/tests/generic-reminder.test.ts`
 - Test: `apps/server/tests/reminder.test.ts`
 
 **Interfaces:**
 - Consumes: Existing `GenericReminderRepository` CRUD and `EmailNotificationChannel.send()`.
-- Produces: Reminder API with CRUD, history, dashboard listing, and `POST /api/reminders/:id/test`; no scheduler endpoints or automatic runner entry.
+- Produces: Reminder API with CRUD, history, dashboard listing, and `POST /api/reminders/:id/test`; no scheduler endpoints or automatic runner entry. Before Windows development/local startup, a one-way legacy adapter retires only `\LYJWorkBench-ReminderRunner` and `\LYJWorkBench-OutboundCheckin`; other platforms are no-op.
 
 - [ ] **Step 1: Rewrite the web test to require a manual-only reminder page**
 
@@ -110,6 +121,12 @@ Delete only the files listed above. Do not delete `reminder.schedule.ts`, `gener
 
 Leave old scheduler tables in existing databases as inert compatibility data in this task; dropping them is unnecessary and risks destructive migration.
 
+Add `clean-server-dist.mjs` before the server emit command so removed runner files cannot survive in `apps/server/dist` after an upgrade. Its deletion target is fixed from the script location and it rejects every CLI argument; use an injected remover to assert the fixed target, then cover stale `reminder-entry.js` and nested runner artifacts in the actual ignored server `dist` directory.
+
+Add the Windows-only `retire-legacy-reminder-tasks.mjs` migration. Invoke one hidden `schtasks.exe /Query /FO CSV /NH`, strictly parse the first quoted CSV field, and delete only exact matches for the two full root paths. Run it through root `predev` and `prelocal:start`. Enumeration execution/nonzero/parse failures and deletion failures are fail-closed with one fixed sanitized error; only a successful enumeration with no exact match is a no-op. Do not use PowerShell and do not create or synchronize any task.
+
+Remove scheduled-task handling from `prepare-backup.ps1`; until Task 8 replaces it, it only verifies the loopback server is stopped and reports the data location.
+
 - [ ] **Step 6: Update UI copy and remove scheduler CSS/API methods**
 
 Use this heading copy:
@@ -122,14 +139,23 @@ Remove `SchedulerStatus`, `getReminderSchedulerStatus`, `syncReminderScheduler`,
 
 - [ ] **Step 7: Run focused verification**
 
-Run the two commands from Step 3.
+Run the two commands from Step 3 plus:
 
-Expected: server and web focused suites PASS; scheduler endpoints return 404; manual test email remains represented in UI and tests.
+```bash
+pnpm --filter @workbench/server test -- tests/legacy-reminder-retirement.test.ts tests/server-build-clean.test.ts tests/backup-preparation.test.ts
+pnpm --filter @workbench/server check
+pnpm --filter @workbench/web check
+pnpm --filter @workbench/server build
+pnpm --filter @workbench/web build
+git diff --check
+```
+
+Expected: focused suites PASS; scheduler endpoints return 404; manual test email remains represented in UI and tests; server build removes stale runner output and rejects target overrides; macOS retirement is a no-op; Windows enumeration is fail-closed and deletion is limited to exact historical task paths parsed from quoted CSV; backup preparation never queries Task Scheduler.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add -A -- packages/contracts/src/index.ts apps/server/src/app.ts apps/server/src/index.ts apps/server/src/modules/calendar apps/server/src/modules/reminders apps/server/src/reminder-entry.ts apps/server/tests/generic-reminder.test.ts apps/server/tests/reminder.test.ts apps/server/tests/reminder-scheduler.test.ts apps/server/package.json apps/web/src/lib/api.ts apps/web/src/features/reminders apps/web/src/app/App.integration.test.tsx apps/web/src/styles/global.css scripts
+git add -A -- package.json README.md packages/contracts/src/index.ts apps/server/src/app.ts apps/server/src/index.ts apps/server/src/modules/calendar apps/server/src/modules/reminders apps/server/src/reminder-entry.ts apps/server/tests/generic-reminder.test.ts apps/server/tests/reminder.test.ts apps/server/tests/reminder-scheduler.test.ts apps/server/tests/reminder-schedule.test.ts apps/server/tests/legacy-reminder-retirement.test.ts apps/server/tests/server-build-clean.test.ts apps/server/tests/backup-preparation.test.ts apps/server/package.json apps/web/src/lib/api.ts apps/web/src/features/reminders apps/web/src/app/App.integration.test.tsx apps/web/src/styles/global.css scripts docs/superpowers/plans/2026-08-23-cross-platform-foundation.md
 git commit -m "refactor: remove automatic reminder scheduling"
 ```
 

@@ -13,7 +13,6 @@ import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";
 import { AiPolishClient, type AiPolishGenerator } from "./modules/ai-polish/ai-polish.client.js";
 import { createHolidayRouter } from "./modules/calendar/holiday.routes.js";
 import type { HolidayYearLoader } from "./modules/calendar/holiday.client.js";
-import type { ReminderScheduler } from "./modules/reminders/reminder-scheduler.js";
 import { AiChatClient, type AiChatGenerator } from "./modules/ai-chat/ai-chat.client.js";
 import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
 
@@ -29,7 +28,6 @@ export interface CreateAppOptions {
   aiChatClient?: AiChatGenerator;
   reminderChannel?: NotificationChannel;
   holidayYearLoader?: HolidayYearLoader;
-  reminderScheduler?: ReminderScheduler;
   now?: () => Date;
   webDistDir?: string;
   instanceToken?: string;
@@ -72,13 +70,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api", createReminderRouter(paths, {
     secretStore,
     channel: options.reminderChannel,
-    now: options.now,
-    scheduler: options.reminderScheduler
+    now: options.now
   }));
   app.use("/api", createHolidayRouter(paths, {
     loader: options.holidayYearLoader,
-    now: options.now,
-    scheduler: options.reminderScheduler
+    now: options.now
   }));
   app.use("/api", createSettingsRouter(paths, {
     secretStore,

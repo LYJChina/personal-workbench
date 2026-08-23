@@ -3,7 +3,6 @@ import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import { GithubHolidayClient, type HolidayYearLoader } from "./holiday.client.js";
 import { HolidayRepository } from "./holiday.repository.js";
-import type { ReminderScheduler } from "../reminders/reminder-scheduler.js";
 
 function isDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -20,7 +19,6 @@ function parseYears(value: unknown): number[] | null {
 export function createHolidayRouter(paths: AppPaths, options: {
   loader?: HolidayYearLoader;
   now?: () => Date;
-  scheduler?: ReminderScheduler;
 } = {}): Router {
   const router = Router();
   const now = options.now ?? (() => new Date());
@@ -59,13 +57,6 @@ export function createHolidayRouter(paths: AppPaths, options: {
         else {
           repository.replaceYear(year, days, "bastengao/chinese-holidays-data", now());
           updatedYears.push(year);
-        }
-      }
-      if (options.scheduler) {
-        try {
-          await options.scheduler.sync();
-        } catch {
-          console.error("Reminder scheduler synchronization failed");
         }
       }
       response.json({ updatedYears, unavailableYears });

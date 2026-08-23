@@ -265,12 +265,9 @@ input[aria-invalid="true"] { border-color: var(--danger-color); }
 .reminder-stats dd { margin: .35rem 0 0; color: var(--heading-color); font-size: .8rem; overflow-wrap: anywhere; }
 
 .reminder-center-page { max-width: 82rem; }
-.reminder-center-heading, .reminder-center-heading .heading-actions, .reminder-column > header, .reminder-item-heading, .reminder-dialog > header, .scheduler-banner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.reminder-center-heading, .reminder-center-heading .heading-actions, .reminder-column > header, .reminder-item-heading, .reminder-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .heading-actions { display: flex; flex-wrap: wrap; }
-.scheduler-banner { padding: .9rem 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-background); }
-.scheduler-banner.warning { border-color: color-mix(in srgb, #d8972f 45%, var(--border-color)); }
-.scheduler-banner.success { border-color: color-mix(in srgb, #2a9d72 45%, var(--border-color)); }
-.scheduler-banner p, .reminder-item p { margin: .2rem 0 0; }
+.reminder-item p { margin: .2rem 0 0; }
 .reminder-workspace { min-width: 0; padding: 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--surface-background); box-shadow: var(--shadow-sm); }
 .reminder-workspace-topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color); }
 .reminder-workspace-topbar > p { margin: 0; color: var(--muted-text-color); font-size: .78rem; }
@@ -397,8 +394,6 @@ input[aria-invalid="true"] { border-color: var(--danger-color); }
   .ai-office-note { justify-self: stretch; max-width: none; }
   .reminder-stats { grid-template-columns: 1fr; }
   .reminder-center-heading { align-items: flex-start; flex-direction: column; }
-  .scheduler-banner { align-items: flex-start; flex-direction: column; }
-  .scheduler-banner .status-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .reminder-workspace-topbar { align-items: flex-start; flex-direction: column; }
   .reminder-item { grid-template-columns: 1fr; align-items: stretch; }
   .reminder-item-primary, .reminder-item.history .reminder-item-primary { grid-template-columns: 1fr; gap: .65rem; }

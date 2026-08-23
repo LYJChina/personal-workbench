@@ -198,8 +198,6 @@ export const ReminderSchema = ReminderUpdateSchema.omit({ recipient: true }).ext
   id: ReminderIdSchema,
   weekday: z.literal(1),
   nextRun: z.string().nullable(),
-  schedulerReinstallRequired: z.boolean(),
-  schedulerReinstallInstruction: z.string(),
   lastSuccess: ReminderAttemptSchema.nullable(),
   lastFailure: ReminderAttemptSchema.required({ category: true }).nullable()
 });
@@ -265,14 +263,6 @@ export const HolidayDaySchema = z.object({
   dayType: z.enum(["holiday", "makeup_workday"]),
   name: z.string().trim().min(1).max(100)
 });
-export const SchedulerStatusSchema = z.object({
-  installed: z.boolean(),
-  synchronized: z.boolean(),
-  taskName: z.literal("LYJWorkBench-ReminderRunner"),
-  message: z.string(),
-  nextRun: z.string().datetime().nullable().optional()
-});
-
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type CustomField = z.infer<typeof CustomFieldSchema>;
@@ -317,4 +307,3 @@ export type GenericReminderInput = z.infer<typeof GenericReminderInputSchema>;
 export type GenericReminder = z.infer<typeof GenericReminderSchema>;
 export type GenericReminderAttempt = z.infer<typeof GenericReminderAttemptSchema>;
 export type HolidayDay = z.infer<typeof HolidayDaySchema>;
-export type SchedulerStatus = z.infer<typeof SchedulerStatusSchema>;

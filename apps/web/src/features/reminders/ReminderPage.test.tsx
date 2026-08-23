@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import type { GenericReminder, GenericReminderAttempt, SchedulerStatus } from "@workbench/contracts";
+import type { GenericReminder, GenericReminderAttempt } from "@workbench/contracts";
 import { ReminderPage, type ReminderCenterApi } from "./ReminderPage";
 
 const reminder: GenericReminder = {
@@ -20,10 +20,6 @@ const attempt: GenericReminderAttempt = {
   subject: "提交外勤打卡提醒", body: "请提交本周外勤打卡。"
 };
 
-const unsynchronized: SchedulerStatus = {
-  installed: false, synchronized: false, taskName: "LYJWorkBench-ReminderRunner", message: "尚未同步"
-};
-
 function createApi(overrides: Partial<ReminderCenterApi> = {}): ReminderCenterApi {
   return {
     listReminders: vi.fn().mockResolvedValue({ items: [reminder] }),
@@ -32,10 +28,6 @@ function createApi(overrides: Partial<ReminderCenterApi> = {}): ReminderCenterAp
     deleteReminder: vi.fn().mockResolvedValue(undefined),
     listAttempts: vi.fn().mockResolvedValue({ items: [attempt] }),
     testReminder: vi.fn().mockResolvedValue({ status: "success", message: "测试邮件已发送" }),
-    getSchedulerStatus: vi.fn().mockResolvedValue(unsynchronized),
-    syncScheduler: vi.fn().mockResolvedValue({
-      ...unsynchronized, installed: true, synchronized: true, message: "已同步", nextRun: "2026-08-18T01:00:00.000Z"
-    }),
     ...overrides
   };
 }
@@ -56,10 +48,10 @@ describe("generic reminder center", () => {
     expect(screen.getByRole("tab", { name: /已执行/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "已执行" })).toHaveTextContent("发送成功");
 
-    await user.click(screen.getByRole("button", { name: "同步系统计划" }));
-    expect(api.syncScheduler).toHaveBeenCalledTimes(1);
-    expect((await screen.findAllByText("已同步")).length).toBeGreaterThan(0);
-    expect(screen.getByText("下次执行：2026年8月18日 09:00")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: /等待执行/ }));
+    expect(screen.getByRole("button", { name: "测试邮件" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "同步系统计划" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/系统计划/)).not.toBeInTheDocument();
   });
 
   it("creates a finite workday email reminder", async () => {

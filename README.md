@@ -25,6 +25,8 @@ Start the Vite web development server and the Express API watcher together:
 pnpm dev
 ```
 
+On Windows, this command first retires the two exact legacy LYJ Workbench reminder tasks left by older releases. It never creates or synchronizes a task. On macOS and other platforms the retirement step is a no-op.
+
 Open the development UI at `http://127.0.0.1:5173`. The API listens only on `http://127.0.0.1:3001`, and Vite forwards browser requests under `/api` to that exact loopback target so the development UI is API-functional.
 
 To use a different API port, set the same validated integer port for the Express server and Vite proxy before starting:
@@ -55,6 +57,8 @@ Start the production-local server and open the workbench after its health check 
 pnpm local:start
 ```
 
+On Windows, local startup performs the same one-time-safe legacy task retirement before starting the server. If Windows confirms that an old task exists but refuses to delete it, startup stops with: `旧版提醒任务清理失败，请在 Windows 任务计划程序中删除 LYJ Workbench 的旧提醒任务后重试。` Delete only the old LYJ Workbench reminder tasks in Task Scheduler, then run the command again.
+
 The default URL is `http://127.0.0.1:3001`. To suppress browser opening or choose another loopback port:
 
 ```powershell
@@ -76,34 +80,11 @@ Open **设置 → 邮件**. Enter the SMTP host, port, transport mode (`STARTTLS
 
 No email is sent during install, build, or local startup. The reminder page’s **发送测试邮件** action sends a real email when valid SMTP settings and a recipient are present.
 
-## Reminder center and system task
+## Reminder center
 
-The **提醒事项** page supports one-time, finite-count, and recurring email reminders. Schedules can use an exact date and time, daily, weekly, monthly, or Chinese workdays. Use **同步系统计划** on that page to create or refresh the exact current-user task `\LYJWorkBench-ReminderRunner`; no command needs to be copied into PowerShell. The task has one non-repeating trigger for the next required reminder wake-up and uses `wscript.exe` to run invisibly. The sync also removes the superseded exact task `\LYJWorkBench-OutboundCheckin`, preventing duplicate delivery.
+The **提醒事项** page supports creating, viewing, editing, and deleting one-time, finite-count, and recurring reminders. Reminder metadata can use an exact date and time, daily, weekly, monthly, or Chinese workdays. Automatic reminder execution is disabled; use **测试邮件** on a reminder when you want to send its email manually.
 
-The home page includes a monthly calendar and a scrollable list of upcoming reminders. Use **更新节假日** on the calendar to refresh the current and next year from the public Chinese holiday dataset. A workday reminder pauses for a year whose calendar has not been synchronized instead of guessing.
-
-Build before using the one-click scheduler action. The command below remains available for inspection or maintenance:
-
-Preview installation without changing Task Scheduler:
-
-```powershell
-powershell -NoProfile -File scripts/sync-reminder-task.ps1 -WhatIf
-```
-
-Install after reviewing the preview:
-
-```powershell
-powershell -NoProfile -File scripts/sync-reminder-task.ps1
-```
-
-Preview removal, then remove only that exact task:
-
-```powershell
-powershell -NoProfile -File scripts/uninstall-reminder-task.ps1 -WhatIf
-powershell -NoProfile -File scripts/uninstall-reminder-task.ps1
-```
-
-The runner schedules only the next required wake-up. After it runs, it schedules the following wake-up automatically. Creating, changing, or deleting a reminder and updating holiday data also recalculates the task. When no reminder is pending, no reminder task runs. If automatic synchronization fails, saved reminder data is preserved and **同步系统计划** remains the manual repair action.
+The home page includes a monthly calendar and a scrollable list of reminder dates. Use **更新节假日** on the calendar to refresh the current and next year from the public Chinese holiday dataset. Reminder dates and repetition rules remain stored for display and future plugins, but the core application does not run them automatically.
 
 ## Local data
 
@@ -130,15 +111,11 @@ Before copying application data, stop `pnpm local:start` or `pnpm dev` with `Ctr
 powershell -NoProfile -File scripts/prepare-backup.ps1
 ```
 
-The script queries only the exact root tasks `\LYJWorkBench-ReminderRunner` and the legacy `\LYJWorkBench-OutboundCheckin`, disables future triggers, stops either task if it is currently `Running`, re-queries it, and fails unless it is no longer running. It also fails while an LYJ Workbench server is still listening on `127.0.0.1:3001`. If the workbench used a non-default port, pass the same value with `-Port`.
+The script only checks that no LYJ Workbench server is listening on `127.0.0.1:3001`, then prints the local data path. If the workbench used a non-default port, pass the same value with `-Port`.
 
 Do not copy data unless the script prints `Backup preparation complete`. This prevents SQLite writes while the copy is in progress.
 
-Copy the entire `%LOCALAPPDATA%\LYJWorkBench` directory to a protected local backup location. Keep the backup access restricted because it contains personal data and encrypted credential blobs. After the copy completes, re-enable the exact task if you disabled it, then resume the server:
-
-```powershell
-Enable-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-ReminderRunner'
-```
+Copy the entire `%LOCALAPPDATA%\LYJWorkBench` directory to a protected local backup location. Keep the backup access restricted because it contains personal data and encrypted credential blobs. After the copy completes, resume the server.
 
 ## Restore on the same Windows account
 
@@ -147,12 +124,9 @@ Enable-ScheduledTask -TaskPath '\' -TaskName 'LYJWorkBench-ReminderRunner'
 3. Copy the backed-up `LYJWorkBench` directory into `%LOCALAPPDATA%`.
 4. Start the workbench and verify the profile, theme, layout, reports, and reminder settings.
 5. Test provider connections manually. If DPAPI cannot decrypt a restored blob, re-enter the corresponding secret in Settings.
-6. Reinstall the scheduled task if its registered project path or reminder time changed.
 
 ## Transfer to another Windows computer or account
 
-Project files, `workbench.sqlite`, and `uploads` can be transferred. On the destination computer, install the prerequisites, run `pnpm install`, then `pnpm build`. With the server and reminder task stopped, copy the database and uploads into the destination account’s `%LOCALAPPDATA%\LYJWorkBench` directory.
+Project files, `workbench.sqlite`, and `uploads` can be transferred. On the destination computer, install the prerequisites, run `pnpm install`, then `pnpm build`. With the server stopped, copy the database and uploads into the destination account’s `%LOCALAPPDATA%\LYJWorkBench` directory.
 
 DPAPI secret blobs are bound to their Windows protection context. They cannot be reused by another Windows account, and copied blobs should not be relied on after a computer or account migration. Do not transfer the `secrets` directory as usable credentials; re-enter the DeepSeek API key and SMTP password under the destination Windows account, then run the explicit connection tests.
-
-Finally, use **同步系统计划** on the reminder page to reinstall `\LYJWorkBench-ReminderRunner` on the destination computer. A scheduled task stores absolute Node, project, and compiled-entry paths, so copying project files does not migrate a working task registration.
