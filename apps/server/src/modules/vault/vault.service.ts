@@ -16,7 +16,7 @@ import {
   VaultLockedError,
   VaultMetadataIntegrityError
 } from "./vault.errors.js";
-import { VaultRepository, type VaultMetadata } from "./vault.repository.js";
+import { VaultRepository, type VaultMetadata, type VaultRepositoryProvider } from "./vault.repository.js";
 
 export { InvalidMasterPasswordError, VaultIntegrityError, VaultLockedError, VaultMetadataIntegrityError } from "./vault.errors.js";
 
@@ -40,23 +40,25 @@ function requireSecret(name: string, plaintext?: string): void {
 }
 
 export class VaultService implements SecretStore {
-  private readonly repository: VaultRepository;
+  private readonly withRepository: VaultRepositoryProvider;
   private readonly configuredScrypt: VaultScryptOptions;
   private key: Buffer | null = null;
 
-  public constructor(database: Database.Database, options: VaultServiceOptions = {}) {
-    this.repository = new VaultRepository(database);
+  public constructor(database: Database.Database | VaultRepositoryProvider, options: VaultServiceOptions = {}) {
+    this.withRepository = typeof database === "function"
+      ? database
+      : <T>(operation: (repository: VaultRepository) => T) => operation(new VaultRepository(database));
     this.configuredScrypt = { ...productionScrypt, ...options.scrypt };
     validateScryptParameters(this.configuredScrypt);
   }
 
   public status(): { configured: boolean; unlocked: boolean } {
-    return { configured: this.repository.isConfigured(), unlocked: this.key !== null };
+    return { configured: this.withRepository((repository) => repository.isConfigured()), unlocked: this.key !== null };
   }
 
   public async setup(masterPassword: string, initialSecrets: Record<string, string>): Promise<void> {
     requireMasterPassword(masterPassword);
-    if (this.repository.isConfigured()) throw new Error("Vault is already configured");
+    if (this.withRepository((repository) => repository.isConfigured())) throw new Error("Vault is already configured");
     for (const [name, plaintext] of Object.entries(initialSecrets)) requireSecret(name, plaintext);
 
     const salt = randomBytes(16);
@@ -72,7 +74,7 @@ export class VaultService implements SecretStore {
           bytes.fill(0);
         }
       }
-      this.repository.initialize({ salt, verifier, scrypt: this.configuredScrypt }, encryptedSecrets);
+      this.withRepository((repository) => repository.initialize({ salt, verifier, scrypt: this.configuredScrypt }, encryptedSecrets));
       this.replaceKey(key);
     } catch (error) {
       key.fill(0);
@@ -82,7 +84,7 @@ export class VaultService implements SecretStore {
 
   public async unlock(masterPassword: string): Promise<void> {
     requireMasterPassword(masterPassword);
-    const metadata = this.repository.readMetadata();
+    const metadata = this.withRepository((repository) => repository.readMetadata());
     if (!metadata) throw new Error("Vault is not configured");
     this.validateMetadata(metadata);
     const key = await deriveVaultKey(masterPassword, { salt: metadata.salt, ...metadata.scrypt });
@@ -109,7 +111,7 @@ export class VaultService implements SecretStore {
     requireSecret(name, plaintext);
     const bytes = Buffer.from(plaintext, "utf8");
     try {
-      this.repository.upsertSecret(name, encryptVaultValue(key, bytes, secretAuthenticatedData(name)));
+      this.withRepository((repository) => repository.upsertSecret(name, encryptVaultValue(key, bytes, secretAuthenticatedData(name))));
     } finally {
       bytes.fill(0);
     }
@@ -118,7 +120,7 @@ export class VaultService implements SecretStore {
   public async readSecret(name: string): Promise<string | null> {
     const key = this.requireKey();
     requireSecret(name);
-    const encrypted = this.repository.readSecret(name);
+    const encrypted = this.withRepository((repository) => repository.readSecret(name));
     if (!encrypted) return null;
     if (encrypted.nonce.length !== 12 || encrypted.authTag.length !== 16 || encrypted.ciphertext.length === 0) {
       throw new VaultIntegrityError();

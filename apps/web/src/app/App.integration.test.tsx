@@ -32,6 +32,7 @@ describe("complete application navigation", () => {
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const path = String(input);
       const method = init?.method ?? "GET";
+      if (path === "/api/vault/status") return json({ configured: true, unlocked: true });
       if (path === "/api/preferences/navigation") return json(navigation);
       if (path === "/api/preferences/layout" && method === "GET") return json(layout);
       if (path === "/api/preferences/layout" && method === "PUT") return json(JSON.parse(String(init?.body)));

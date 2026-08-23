@@ -9,6 +9,7 @@ import type { NotificationChannel } from "./notification-channel.js";
 import { ReminderRepository } from "./reminder.repository.js";
 import { GenericReminderRepository } from "./generic-reminder.repository.js";
 import { HolidayRepository } from "../calendar/holiday.repository.js";
+import { VaultIntegrityError, VaultLockedError } from "../vault/vault.errors.js";
 
 export interface ReminderRouterDependencies {
   secretStore: SecretStore;
@@ -18,6 +19,10 @@ export interface ReminderRouterDependencies {
 
 function errorResponse(response: Response, status: number, message: string, code: string): void {
   response.status(status).json({ error: { message, code } });
+}
+
+function rethrowVaultAccessError(error: unknown): void {
+  if (error instanceof VaultLockedError || error instanceof VaultIntegrityError) throw error;
 }
 
 export function createReminderRouter(paths: AppPaths, dependencies: ReminderRouterDependencies): Router {
@@ -65,7 +70,8 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     let delivery;
     try {
       delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body });
-    } catch {
+    } catch (error) {
+      rethrowVaultAccessError(error);
       delivery = { status: "failure" as const, category: "unknown" as const };
     }
     const result: ReminderTestResult = delivery.status === "success"
@@ -131,7 +137,8 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     let delivery;
     try {
       delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body });
-    } catch {
+    } catch (error) {
+      rethrowVaultAccessError(error);
       delivery = { status: "failure" as const, category: "unknown" as const };
     }
     response.json(delivery.status === "success"

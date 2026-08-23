@@ -11,6 +11,17 @@ export const HealthResponseSchema = z.object({
   status: z.literal("ok")
 });
 
+export const VaultStatusSchema = z.object({
+  configured: z.boolean(),
+  unlocked: z.boolean()
+});
+
+export const VaultSetupInputSchema = z.object({
+  masterPassword: z.string().min(12).max(1024)
+});
+
+export const VaultUnlockInputSchema = VaultSetupInputSchema;
+
 export const CustomFieldSchema = z.object({
   label: z.string().trim().min(1).max(100),
   value: z.string().trim().max(1_000)
@@ -265,6 +276,9 @@ export const HolidayDaySchema = z.object({
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+export type VaultStatus = z.infer<typeof VaultStatusSchema>;
+export type VaultSetupInput = z.infer<typeof VaultSetupInputSchema>;
+export type VaultUnlockInput = z.infer<typeof VaultUnlockInputSchema>;
 export type CustomField = z.infer<typeof CustomFieldSchema>;
 export type ProfileResponse = z.infer<typeof ProfileSchema>;
 export type ProfileUpdate = z.infer<typeof ProfileUpdateSchema>;

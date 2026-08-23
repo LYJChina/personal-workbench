@@ -6,8 +6,11 @@ import { createPreferencesRouter } from "./modules/preferences/preferences.route
 import { createDailyReportRouter } from "./modules/daily-reports/daily-report.routes.js";
 import { DeepSeekClient, type DailyReportGenerator } from "./modules/daily-reports/deepseek.client.js";
 import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectionTester } from "./modules/settings/settings.routes.js";
-import { WindowsDpapiSecretStore } from "./platform/dpapi.js";
 import type { SecretStore } from "./platform/secret-store.js";
+import { VaultService, type VaultScryptOptions } from "./modules/vault/vault.service.js";
+import { createVaultRepositoryProvider } from "./modules/vault/vault.repository.js";
+import { createVaultRouter } from "./modules/vault/vault.routes.js";
+import { VaultIntegrityError, VaultLockedError } from "./modules/vault/vault.errors.js";
 import { createReminderRouter } from "./modules/reminders/reminder.routes.js";
 import type { NotificationChannel } from "./modules/reminders/notification-channel.js";
 import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";
@@ -20,6 +23,8 @@ import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
 export interface CreateAppOptions {
   dataDir?: string;
   secretStore?: SecretStore;
+  vaultScrypt?: VaultScryptOptions;
+  vaultMonotonicNow?: () => number;
   allowLoopbackHttp?: boolean;
   deepSeekConnectionTester?: DeepSeekConnectionTester;
   mailConnectionTester?: MailConnectionTester;
@@ -37,7 +42,8 @@ export interface CreateAppOptions {
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   const paths = resolveAppPaths(options);
-  const secretStore = options.secretStore ?? new WindowsDpapiSecretStore(paths.secretsDir);
+  const vault = new VaultService(createVaultRepositoryProvider(paths), { scrypt: options.vaultScrypt });
+  const secretStore = options.secretStore ?? vault;
   const deepSeekClient = options.deepSeekClient ?? new DeepSeekClient();
   const aiPolishClient = options.aiPolishClient ?? new AiPolishClient();
   const aiChatClient = options.aiChatClient ?? new AiChatClient();
@@ -50,6 +56,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }
     response.json(HealthResponseSchema.parse({ status: "ok" }));
   });
+
+  app.use("/api", createVaultRouter({ vault, monotonicNow: options.vaultMonotonicNow }));
 
   app.use("/api", createProfileRouter(paths));
   app.use("/api", createPreferencesRouter(paths));
@@ -109,6 +117,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
     if (isPhotoUploadLimitError(error)) {
       response.status(413).json({ error: { message: "Profile photo must be 5 MB or smaller", code: "PAYLOAD_TOO_LARGE" } });
+      return;
+    }
+    if (error instanceof VaultLockedError) {
+      response.status(423).json({ error: { message: "保险库已锁定", code: "VAULT_LOCKED" } });
+      return;
+    }
+    if (error instanceof VaultIntegrityError) {
+      response.status(500).json({ error: { message: "保险库数据无法验证", code: "VAULT_INTEGRITY_ERROR" } });
       return;
     }
     console.error("Unhandled server error");

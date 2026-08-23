@@ -1,4 +1,6 @@
 import type Database from "better-sqlite3";
+import type { AppPaths } from "../../config/paths.js";
+import { openDatabase } from "../../db/database.js";
 import type { EncryptedValue } from "./vault.crypto.js";
 
 export interface VaultMetadata {
@@ -67,4 +69,17 @@ export class VaultRepository {
     const row = this.database.prepare("SELECT nonce, ciphertext, auth_tag FROM vault_secrets WHERE name = ?").get(name) as SecretRow | undefined;
     return row ? { nonce: row.nonce, ciphertext: row.ciphertext, authTag: row.auth_tag } : null;
   }
+}
+
+export type VaultRepositoryProvider = <T>(operation: (repository: VaultRepository) => T) => T;
+
+export function createVaultRepositoryProvider(paths: AppPaths): VaultRepositoryProvider {
+  return <T>(operation: (repository: VaultRepository) => T): T => {
+    const database = openDatabase(paths);
+    try {
+      return operation(new VaultRepository(database));
+    } finally {
+      database.close();
+    }
+  };
 }

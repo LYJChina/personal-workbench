@@ -227,4 +227,50 @@ describe("manual outbound check-in email", () => {
     expect(JSON.stringify(response.body)).not.toContain(rawSecret);
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain(rawSecret);
   });
+
+  it("propagates a locked default vault from both manual email endpoints", async () => {
+    const app = createApp({ dataDir: tempDir, vaultScrypt: { n: 16, r: 1, p: 1, maxmem: 128 * 1024 * 1024 } });
+    const input = {
+      name: "锁定测试", enabled: true, lifecycle: "once", scheduleType: "once",
+      startDate: "2026-08-24", localTime: "09:30", weekdays: [], monthDay: null,
+      totalOccurrences: null, recipient: "me@example.com", subject: "测试", body: "正文"
+    };
+    const created = await request(app).post("/api/reminders").send(input).expect(201);
+
+    await request(app).post("/api/reminders/outbound-checkin/test").expect(423, {
+      error: { message: "保险库已锁定", code: "VAULT_LOCKED" }
+    });
+    await request(app).post(`/api/reminders/${created.body.id}/test`).expect(423, {
+      error: { message: "保险库已锁定", code: "VAULT_LOCKED" }
+    });
+  });
+
+  it("propagates vault integrity failures from both manual email endpoints", async () => {
+    const app = createApp({ dataDir: tempDir, vaultScrypt: { n: 16, r: 1, p: 1, maxmem: 128 * 1024 * 1024 } });
+    await request(app).post("/api/vault/setup").send({ masterPassword: "correct horse battery staple" }).expect(201);
+    await request(app).put("/api/settings/mail").send({
+      smtpHost: "smtp.example.com", smtpPort: 587, transportMode: "starttls",
+      smtpUsername: "sender@example.com", fromAddress: "sender@example.com", smtpPassword: "secret-password"
+    }).expect(200);
+    const created = await request(app).post("/api/reminders").send({
+      name: "完整性测试", enabled: true, lifecycle: "once", scheduleType: "once",
+      startDate: "2026-08-24", localTime: "09:30", weekdays: [], monthDay: null,
+      totalOccurrences: null, recipient: "me@example.com", subject: "测试", body: "正文"
+    }).expect(201);
+    const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    try {
+      const row = database.prepare("SELECT ciphertext FROM vault_secrets WHERE name = 'smtp-password'").get() as { ciphertext: Buffer };
+      row.ciphertext[0] ^= 1;
+      database.prepare("UPDATE vault_secrets SET ciphertext = ? WHERE name = 'smtp-password'").run(row.ciphertext);
+    } finally {
+      database.close();
+    }
+
+    await request(app).post("/api/reminders/outbound-checkin/test").expect(500, {
+      error: { message: "保险库数据无法验证", code: "VAULT_INTEGRITY_ERROR" }
+    });
+    await request(app).post(`/api/reminders/${created.body.id}/test`).expect(500, {
+      error: { message: "保险库数据无法验证", code: "VAULT_INTEGRITY_ERROR" }
+    });
+  });
 });

@@ -5,6 +5,20 @@ import type { AppPaths } from "../config/paths.js";
 interface TableColumn { name: string; }
 interface TableDefinition { sql: string | null; }
 
+export interface OpenDatabaseOptions {
+  createDatabase?: (databasePath: string) => Database.Database;
+  loadMigration?: (primaryUrl: URL, fallbackUrl: URL) => string;
+  migrateHistory?: (database: Database.Database) => void;
+}
+
+function loadMigration(primaryUrl: URL, fallbackUrl: URL): string {
+  try {
+    return readFileSync(primaryUrl, "utf8");
+  } catch {
+    return readFileSync(fallbackUrl, "utf8");
+  }
+}
+
 function migrateAiPolishKinds(database: Database.Database): void {
   const definition = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ai_polish_records'").get() as TableDefinition | undefined;
   if (!definition?.sql?.includes("CHECK") || definition.sql.includes("'custom'")) return;
@@ -51,24 +65,28 @@ function migrateAiPolishHistory(database: Database.Database): void {
   })();
 }
 
-export function openDatabase(paths: AppPaths): Database.Database {
+export function openDatabase(paths: AppPaths, options: OpenDatabaseOptions = {}): Database.Database {
   mkdirSync(paths.uploadsDir, { recursive: true });
-  const database = new Database(paths.databasePath);
-  database.pragma("foreign_keys = ON");
-  let migrationUrl = new URL("./migrations/001_init.sql", import.meta.url);
+  const database = (options.createDatabase ?? ((databasePath) => new Database(databasePath)))(paths.databasePath);
   try {
-    readFileSync(migrationUrl);
-  } catch {
-    migrationUrl = new URL("../../src/db/migrations/001_init.sql", import.meta.url);
+    database.pragma("foreign_keys = ON");
+    const readMigration = options.loadMigration ?? loadMigration;
+    database.exec(readMigration(
+      new URL("./migrations/001_init.sql", import.meta.url),
+      new URL("../../src/db/migrations/001_init.sql", import.meta.url)
+    ));
+    database.exec(readMigration(
+      new URL("./migrations/002_generic_reminders.sql", import.meta.url),
+      new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url)
+    ));
+    (options.migrateHistory ?? migrateAiPolishHistory)(database);
+    return database;
+  } catch (error) {
+    try {
+      database.close();
+    } catch {
+      // Preserve the initialization failure; callers need the root cause.
+    }
+    throw error;
   }
-  database.exec(readFileSync(migrationUrl, "utf8"));
-  let genericMigrationUrl = new URL("./migrations/002_generic_reminders.sql", import.meta.url);
-  try {
-    readFileSync(genericMigrationUrl);
-  } catch {
-    genericMigrationUrl = new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url);
-  }
-  database.exec(readFileSync(genericMigrationUrl, "utf8"));
-  migrateAiPolishHistory(database);
-  return database;
 }

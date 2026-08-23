@@ -25,7 +25,8 @@ import type {
   GenericReminderAttempt,
   HolidayDay,
   SettingsResponse,
-  Theme
+  Theme,
+  VaultStatus
 } from "@workbench/contracts";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -46,6 +47,18 @@ async function requestVoid(path: string, init?: RequestInit): Promise<void> {
 }
 
 export const api = {
+  getVaultStatus: () => requestJson<VaultStatus>("/vault/status"),
+  setupVault: (masterPassword: string) => requestJson<VaultStatus>("/vault/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ masterPassword })
+  }),
+  unlockVault: (masterPassword: string) => requestVoid("/vault/unlock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ masterPassword })
+  }),
+  lockVault: () => requestVoid("/vault/lock", { method: "POST" }),
   getProfile: () => requestJson<ProfileResponse>("/profile"),
   updateProfile: (profile: ProfileUpdate) => requestJson<ProfileResponse>("/profile", {
     method: "PUT",

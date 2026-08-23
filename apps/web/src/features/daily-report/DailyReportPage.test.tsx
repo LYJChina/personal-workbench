@@ -52,6 +52,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("AI Office daily report flow", () => {
   it("navigates from the sidebar to the tool hub and then to the independent daily report page", async () => {
+    vi.spyOn(api, "getVaultStatus").mockResolvedValue({ configured: true, unlocked: true });
     vi.spyOn(api, "getNavigation").mockResolvedValue([
       { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },
       { id: "ai-office", label: "AI 办公", path: "/ai-office", position: 1, visible: true, disabled: false },
@@ -65,7 +66,7 @@ describe("AI Office daily report flow", () => {
     const user = userEvent.setup();
     render(<MemoryRouter><App /></MemoryRouter>);
 
-    await user.click(screen.getByRole("link", { name: "AI 办公" }));
+    await user.click(await screen.findByRole("link", { name: "AI 办公" }));
     expect(screen.getByRole("heading", { name: "AI 办公" })).toBeVisible();
     const card = screen.getByRole("link", { name: /AI 润色/ });
     expect(card).toHaveClass("ai-tool-card");
