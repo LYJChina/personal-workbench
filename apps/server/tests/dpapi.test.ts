@@ -7,7 +7,9 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WindowsDpapiSecretStore } from "../src/platform/legacy-windows-dpapi";
 
-const describeOnWindows = process.platform === "win32" ? describe : describe.skip;
+const runWindowsIntegration = process.platform === "win32"
+  && (process.env.GITHUB_ACTIONS !== "true" || process.env.LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION === "1");
+const describeOnWindows = runWindowsIntegration ? describe : describe.skip;
 const execFileAsync = promisify(execFile);
 
 describe("DPAPI platform boundary", () => {
