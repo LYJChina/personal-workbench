@@ -423,7 +423,7 @@ describe("cross-platform local launcher", () => {
       while (serverPid && processExists(serverPid) && Date.now() < cleanupDeadline) {
         await new Promise((resolveWait) => setTimeout(resolveWait, 25));
       }
-      await rm(fixtureRoot, { recursive: true, force: true });
+      await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }, 10_000);
 
