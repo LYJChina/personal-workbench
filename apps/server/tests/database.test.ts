@@ -66,7 +66,7 @@ describe("database initialization lifecycle", () => {
     const paths = resolveAppPaths({ dataDir });
 
     const database = openDatabase(paths);
-    expect(database.pragma("user_version", { simple: true })).toBe(3);
+    expect(database.pragma("user_version", { simple: true })).toBe(4);
     expect(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('reminder_delivery_claims', 'reminder_scheduler_state', 'generic_reminder_claims')").pluck().all()).toEqual([]);
     database.close();
 
@@ -83,7 +83,7 @@ describe("database initialization lifecycle", () => {
     legacy.close();
 
     const upgraded = openDatabase(paths);
-    expect(upgraded.pragma("user_version", { simple: true })).toBe(3);
+    expect(upgraded.pragma("user_version", { simple: true })).toBe(4);
     expect(upgraded.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("legacy-key")).toBe("legacy-value");
     upgraded.close();
   });
@@ -126,7 +126,7 @@ describe("database initialization lifecycle", () => {
     expect((await readdir(dataDir)).some((name) => name.includes("migration-recovery"))).toBe(true);
 
     const retried = openDatabase(paths);
-    expect(retried.pragma("user_version", { simple: true })).toBe(3);
+    expect(retried.pragma("user_version", { simple: true })).toBe(4);
     expect(retried.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("preserve-me")).toBe("exact-value");
     retried.close();
   });
@@ -169,7 +169,7 @@ describe("database initialization lifecycle", () => {
       }
     });
     expect({ status: childResult?.status, stderr: childResult?.stderr?.toString() }).toEqual({ status: 0, stderr: "" });
-    expect(database.pragma("user_version", { simple: true })).toBe(3);
+    expect(database.pragma("user_version", { simple: true })).toBe(4);
     expect(database.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("race-key")).toBe("preserved");
     database.close();
   });
@@ -185,7 +185,7 @@ describe("database initialization lifecycle", () => {
     legacy.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("wal-key", "committed-in-wal");
 
     const upgraded = openDatabase(paths);
-    expect(upgraded.pragma("user_version", { simple: true })).toBe(3);
+    expect(upgraded.pragma("user_version", { simple: true })).toBe(4);
     expect(upgraded.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("wal-key")).toBe("committed-in-wal");
     upgraded.close();
     legacy.close();

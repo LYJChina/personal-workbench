@@ -12,7 +12,7 @@ interface LegacyProfilePhotoRow { photo_filename: string | null; photo_blob: Buf
 const maxPhotoBytes = 5 * 1024 * 1024;
 const migrationLockBudgetMs = 5_000;
 const busyRetrySignal = new Int32Array(new SharedArrayBuffer(4));
-export const currentSchemaVersion = 3;
+export const currentSchemaVersion = 4;
 const futureSchemaError = "Database schema version is newer than supported";
 const invalidRecoveryError = "Database migration recovery snapshot is invalid";
 
@@ -253,6 +253,13 @@ const migrations: Migration[] = [
       (options.migrateHistory ?? migrateAiPolishHistory)(database);
       migrateProfilePhotos(database, paths, options.legacyPhotoFileSystem ?? nativeLegacyPhotoFileSystem);
     }
+  },
+  {
+    version: 4,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/004_plugin_kernel.sql", import.meta.url),
+      new URL("../../src/db/migrations/004_plugin_kernel.sql", import.meta.url)
+    ))
   }
 ];
 

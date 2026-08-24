@@ -64,6 +64,8 @@ describe("database backup export", () => {
     try {
       expect(exported.pragma("integrity_check", { simple: true })).toBe("ok");
       expect(exported.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'profile'").pluck().get()).toBe("profile");
+      expect(exported.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('installed_plugins', 'plugin_audit_events', 'plugin_runtime_state') ORDER BY name").pluck().all())
+        .toEqual(["installed_plugins", "plugin_audit_events", "plugin_runtime_state"]);
       expect(exported.pragma("table_info(profile)")).toEqual(expect.arrayContaining([expect.objectContaining({ name: "photo_blob" })]));
       expect(JSON.parse(String(exported.prepare("SELECT value FROM app_settings WHERE key = 'appearance'").pluck().get())))
         .toEqual({ skin: "sage", density: "compact", radius: "subtle", glass: false });
