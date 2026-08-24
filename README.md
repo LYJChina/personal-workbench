@@ -33,7 +33,7 @@ On Windows only, `pnpm dev` and `pnpm local:start` may perform an exact, one-tim
 
 ## Windows and macOS data locations
 
-All current user data is authoritative in one SQLite database:
+All current user data—including skin, density, radius, and glass appearance preferences—is authoritative in one SQLite database:
 
 - Windows: `%LOCALAPPDATA%\LYJWorkBench\workbench.sqlite`
 - macOS: `~/Library/Application Support/LYJWorkBench/workbench.sqlite`
@@ -61,6 +61,8 @@ The home calendar can refresh Chinese holiday data for the current and next year
 ## Export a backup
 
 Open **设置 → 备份与迁移** and choose **导出数据库**. The running application creates a consistent SQLite snapshot with SQLite's online-backup mechanism, validates its integrity, and downloads a file named like `LYJWorkBench-backup-2026-08-23.sqlite`. You do not need to stop the application before exporting.
+
+Before upgrading an existing version-zero database, startup creates and validates an exceptional migration recovery snapshot. The snapshot may precede the migration write lock, so it is retained only for operator diagnosis/recovery and is never copied automatically over the live database. All pending versions run under one SQLite write transaction; a failure rolls that transaction back in place without replacing the database or deleting its WAL/SHM sidecars. Successful migrations remove the artifact.
 
 The exported database includes profile data and the photo, encrypted keys, settings, reminders, and history. Keep it in a protected location because it contains personal data and encrypted credential material. Secrets remain encrypted and are not directly readable as plaintext; the same master password is required after transfer.
 

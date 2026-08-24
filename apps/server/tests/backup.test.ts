@@ -49,7 +49,11 @@ describe("database backup export", () => {
     const backupTempRoot = await mkdtemp(join(tmpdir(), "lyj-backup-fresh-output-"));
     temporaryDirectories.push(dataDir, backupTempRoot);
 
-    const response = await request(createApp({ dataDir, backupTempRoot }))
+    const app = createApp({ dataDir, backupTempRoot });
+    await request(app).put("/api/preferences/appearance").send({
+      skin: "sage", density: "compact", radius: "subtle", glass: false
+    }).expect(200);
+    const response = await request(app)
       .post("/api/backup/export")
       .buffer(true)
       .parse(sqliteParser as never)
@@ -61,6 +65,8 @@ describe("database backup export", () => {
       expect(exported.pragma("integrity_check", { simple: true })).toBe("ok");
       expect(exported.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'profile'").pluck().get()).toBe("profile");
       expect(exported.pragma("table_info(profile)")).toEqual(expect.arrayContaining([expect.objectContaining({ name: "photo_blob" })]));
+      expect(JSON.parse(String(exported.prepare("SELECT value FROM app_settings WHERE key = 'appearance'").pluck().get())))
+        .toEqual({ skin: "sage", density: "compact", radius: "subtle", glass: false });
     } finally {
       exported.close();
     }
@@ -416,7 +422,8 @@ describe("database backup export", () => {
             host: "127.0.0.1",
             port: address.port,
             path: "/api/backup/export",
-            method: "POST"
+            method: "POST",
+            headers: { "X-LYJ-Workbench-Request": "local-browser-v1" }
           }, (response) => {
             response.once("data", () => {
               requestHandle.destroy();
@@ -457,7 +464,8 @@ describe("database backup export", () => {
           host: "127.0.0.1",
           port: address.port,
           path: "/api/backup/export",
-          method: "POST"
+          method: "POST",
+          headers: { "X-LYJ-Workbench-Request": "local-browser-v1" }
         }, (response) => {
           response.once("data", () => {
             requestHandle.destroy();
@@ -497,7 +505,8 @@ describe("database backup export", () => {
       host: "127.0.0.1",
       port: address.port,
       path: "/api/backup/export",
-      method: "POST"
+      method: "POST",
+      headers: { "X-LYJ-Workbench-Request": "local-browser-v1" }
     });
     requestHandle.on("error", () => undefined);
     requestHandle.end();

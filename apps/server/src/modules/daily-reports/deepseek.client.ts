@@ -14,6 +14,7 @@ export interface DailyReportGenerationInput extends DailyReportInput {
   baseUrl: string;
   model: string;
   apiKey: string;
+  signal?: AbortSignal;
 }
 
 export interface DailyReportGenerator {
@@ -32,6 +33,9 @@ export class DeepSeekClient implements DailyReportGenerator {
 
   public async generateDailyReport(input: DailyReportGenerationInput): Promise<{ content: string; model: string }> {
     const controller = new AbortController();
+    const abortFromRequest = () => controller.abort();
+    input.signal?.addEventListener("abort", abortFromRequest, { once: true });
+    if (input.signal?.aborted) controller.abort();
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
       const response = await this.fetchImplementation(`${input.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
@@ -72,6 +76,7 @@ export class DeepSeekClient implements DailyReportGenerator {
       throw new DeepSeekClientError("upstream");
     } finally {
       clearTimeout(timeout);
+      input.signal?.removeEventListener("abort", abortFromRequest);
     }
   }
 }

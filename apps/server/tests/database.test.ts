@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -58,6 +58,148 @@ describe("database initialization lifecycle", () => {
     })).toThrow(original);
     await rm(dataDir, { recursive: true, force: true });
     await expect(rm(dataDir, { recursive: true, force: true })).resolves.toBeUndefined();
+  });
+
+  it("versions a new database without a recovery artifact or scheduler-only tables", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-versioned-new-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+
+    const database = openDatabase(paths);
+    expect(database.pragma("user_version", { simple: true })).toBe(3);
+    expect(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('reminder_delivery_claims', 'reminder_scheduler_state', 'generic_reminder_claims')").pluck().all()).toEqual([]);
+    database.close();
+
+    expect((await readdir(dataDir)).filter((name) => name.includes("migration-recovery"))).toEqual([]);
+  });
+
+  it("upgrades a populated version-zero database in place and preserves its data", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-versioned-legacy-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    const legacy = new Database(paths.databasePath);
+    legacy.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    legacy.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("legacy-key", "legacy-value");
+    legacy.close();
+
+    const upgraded = openDatabase(paths);
+    expect(upgraded.pragma("user_version", { simple: true })).toBe(3);
+    expect(upgraded.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("legacy-key")).toBe("legacy-value");
+    upgraded.close();
+  });
+
+  it("fails closed with a fixed error for a database newer than supported", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-versioned-future-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    const future = new Database(paths.databasePath);
+    future.pragma("user_version = 99");
+    future.close();
+
+    expect(() => openDatabase(paths)).toThrow("Database schema version is newer than supported");
+  });
+
+  it("rolls back every pending version without replacing data committed after the recovery snapshot", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-recovery-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    const legacy = new Database(paths.databasePath);
+    legacy.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    legacy.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("preserve-me", "exact-value");
+    legacy.close();
+
+    expect(() => openDatabase(paths, {
+      afterRecoverySnapshot: () => {
+        const concurrentWriter = new Database(paths.databasePath);
+        concurrentWriter.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("concurrent-key", "committed-after-snapshot");
+        concurrentWriter.close();
+      },
+      migrateHistory: () => { throw new Error("injected version-three failure"); }
+    }))
+      .toThrow("injected version-three failure");
+    const restored = new Database(paths.databasePath);
+    expect(restored.pragma("user_version", { simple: true })).toBe(0);
+    expect(restored.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("preserve-me")).toBe("exact-value");
+    expect(restored.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("concurrent-key")).toBe("committed-after-snapshot");
+    expect(restored.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'generic_reminders'").get()).toBeUndefined();
+    restored.close();
+    expect((await readdir(dataDir)).some((name) => name.includes("migration-recovery"))).toBe(true);
+
+    const retried = openDatabase(paths);
+    expect(retried.pragma("user_version", { simple: true })).toBe(3);
+    expect(retried.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("preserve-me")).toBe("exact-value");
+    retried.close();
+  });
+
+  it("rejects a corrupt retained recovery artifact before applying migrations", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-corrupt-recovery-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    const legacy = new Database(paths.databasePath);
+    legacy.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    legacy.close();
+    await writeFile(`${paths.databasePath}.migration-recovery-${process.pid}.sqlite`, "not sqlite");
+
+    expect(() => openDatabase(paths)).toThrow("Database migration recovery snapshot is invalid");
+  });
+
+  it("lets a second process fail atomically after snapshot while the first opener retries the migration", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-second-opener-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    const legacy = new Database(paths.databasePath);
+    legacy.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    legacy.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("race-key", "preserved");
+    legacy.close();
+    let childResult: ReturnType<typeof spawnSync> | undefined;
+
+    const database = openDatabase(paths, {
+      afterRecoverySnapshot: () => {
+        const script = `
+          import { resolveAppPaths } from './src/config/paths.ts';
+          import { openDatabase } from './src/db/database.ts';
+          try {
+            openDatabase(resolveAppPaths({ dataDir: ${JSON.stringify(dataDir)} }), { migrateHistory: () => { throw new Error('forced second-opener failure'); } });
+            process.exit(2);
+          } catch (error) {
+            process.exit(error instanceof Error && error.message === 'forced second-opener failure' ? 0 : 3);
+          }
+        `;
+        childResult = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { cwd: process.cwd(), stdio: "pipe" });
+      }
+    });
+    expect({ status: childResult?.status, stderr: childResult?.stderr?.toString() }).toEqual({ status: 0, stderr: "" });
+    expect(database.pragma("user_version", { simple: true })).toBe(3);
+    expect(database.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("race-key")).toBe("preserved");
+    database.close();
+  });
+
+  it("includes committed WAL-backed legacy data in the version-zero upgrade", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-wal-legacy-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    const legacy = new Database(paths.databasePath);
+    legacy.pragma("journal_mode = WAL");
+    legacy.pragma("wal_autocheckpoint = 0");
+    legacy.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    legacy.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("wal-key", "committed-in-wal");
+
+    const upgraded = openDatabase(paths);
+    expect(upgraded.pragma("user_version", { simple: true })).toBe(3);
+    expect(upgraded.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("wal-key")).toBe("committed-in-wal");
+    upgraded.close();
+    legacy.close();
+  });
+
+  it("reopens a current database without creating a migration recovery artifact", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "lyj-database-noop-reopen-"));
+    temporaryDirectories.push(dataDir);
+    const paths = resolveAppPaths({ dataDir });
+    openDatabase(paths).close();
+
+    openDatabase(paths).close();
+
+    expect((await readdir(dataDir)).filter((name) => name.includes("migration-recovery"))).toEqual([]);
   });
 });
 

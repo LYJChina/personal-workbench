@@ -8,6 +8,7 @@ import { isAllowedDeepSeekUrl } from "../settings/settings.routes.js";
 import { SettingsRepository } from "../settings/settings.repository.js";
 import type { AiPolishGenerator } from "./ai-polish.client.js";
 import { AiPolishRepository } from "./ai-polish.repository.js";
+import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 
 const deepSeekSecretName = "deepseek-api-key";
 
@@ -35,11 +36,11 @@ export function createAiPolishRouter(paths: AppPaths, dependencies: {
   allowLoopbackHttp?: boolean;
 }): Router {
   const router = Router();
-  router.use((_request, response, next) => {
+  router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.aiPolishRepository = new AiPolishRepository(database);
     response.locals.settingsRepository = new SettingsRepository(database);
-    response.once("finish", () => database.close());
+    response.locals.requestSignal = bindRequestLifecycle(request, response, () => database.close());
     next();
   });
   const recordsFor = (response: Response) => response.locals.aiPolishRepository as AiPolishRepository;
@@ -48,36 +49,40 @@ export function createAiPolishRouter(paths: AppPaths, dependencies: {
     (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);
 
   router.post("/ai-polish/generate", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const parsed = AiPolishInputSchema.safeParse(request.body);
     if (!parsed.success) return errorResponse(response, 400, "AI polish validation failed", "VALIDATION_ERROR");
     const apiKey = await dependencies.secretStore.readSecret(deepSeekSecretName);
+    if (!requestCanContinue(request, response, signal)) return;
     const settings = settingsFor(response).getDeepSeekSettings(Boolean(apiKey));
     if (!apiKey || !settings.model.trim() || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) {
       return errorResponse(response, 409, "请先在设置中配置 DeepSeek", "DEEPSEEK_NOT_CONFIGURED");
     }
     let generated: { content: string; model: string };
     try {
-      generated = await dependencies.generator.generatePolish({ ...parsed.data, baseUrl: settings.baseUrl, model: settings.model, apiKey });
+      generated = await dependencies.generator.generatePolish({ ...parsed.data, baseUrl: settings.baseUrl, model: settings.model, apiKey, signal });
     } catch (error) {
-      providerError(response, error);
+      if (requestCanContinue(request, response, signal)) providerError(response, error);
       return;
     }
-    response.status(201).json(recordsFor(response).create(parsed.data, generated));
+    if (requestCanContinue(request, response, signal)) response.status(201).json(recordsFor(response).create(parsed.data, generated));
   }));
 
   router.post("/ai-polish/system-prompt", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const parsed = AiSystemPromptInputSchema.safeParse(request.body);
     if (!parsed.success) return errorResponse(response, 400, "System prompt validation failed", "VALIDATION_ERROR");
     const apiKey = await dependencies.secretStore.readSecret(deepSeekSecretName);
+    if (!requestCanContinue(request, response, signal)) return;
     const settings = settingsFor(response).getDeepSeekSettings(Boolean(apiKey));
     if (!apiKey || !settings.model.trim() || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) {
       return errorResponse(response, 409, "请先在设置中配置 DeepSeek", "DEEPSEEK_NOT_CONFIGURED");
     }
     try {
-      const generated = await dependencies.generator.generateSystemPrompt({ ...parsed.data, baseUrl: settings.baseUrl, model: settings.model, apiKey });
-      response.json(generated);
+      const generated = await dependencies.generator.generateSystemPrompt({ ...parsed.data, baseUrl: settings.baseUrl, model: settings.model, apiKey, signal });
+      if (requestCanContinue(request, response, signal)) response.json(generated);
     } catch (error) {
-      providerError(response, error);
+      if (requestCanContinue(request, response, signal)) providerError(response, error);
     }
   }));
 

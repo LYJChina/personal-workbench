@@ -1,5 +1,3 @@
-BEGIN TRANSACTION;
-
 CREATE TABLE IF NOT EXISTS generic_reminders (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -36,15 +34,6 @@ CREATE TABLE IF NOT EXISTS generic_reminder_attempts (
 CREATE INDEX IF NOT EXISTS generic_reminder_attempts_time_idx
   ON generic_reminder_attempts(attempted_at DESC, id DESC);
 
-CREATE TABLE IF NOT EXISTS generic_reminder_claims (
-  reminder_id TEXT NOT NULL REFERENCES generic_reminders(id) ON DELETE CASCADE,
-  scheduled_for TEXT NOT NULL,
-  claim_token TEXT NOT NULL UNIQUE,
-  claimed_at TEXT NOT NULL,
-  claim_expires_at TEXT NOT NULL,
-  PRIMARY KEY(reminder_id, scheduled_for)
-);
-
 CREATE TABLE IF NOT EXISTS holiday_calendar_days (
   local_date TEXT PRIMARY KEY,
   day_type TEXT NOT NULL CHECK (day_type IN ('holiday', 'makeup_workday')),
@@ -59,5 +48,3 @@ CREATE TABLE IF NOT EXISTS holiday_calendar_syncs (
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   synchronized_at TEXT NOT NULL
 );
-
-COMMIT;

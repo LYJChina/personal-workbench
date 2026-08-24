@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "node ../../scripts/clean-server-dist.mjs && tsc --noEmit && tsc -p tsconfig.runtime.json",
-    "test": "vitest run",
+    "test": "vitest --configLoader runner run",
     "check": "tsc --noEmit"
   },
   "dependencies": {

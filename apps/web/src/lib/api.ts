@@ -27,10 +27,29 @@ import type {
   SettingsResponse,
   Theme,
   VaultStatus
+  ,AppearancePreference
+  ,AppearanceSettings
+} from "@workbench/contracts";
+import {
+  WORKBENCH_MUTATION_HEADER_NAME,
+  WORKBENCH_MUTATION_HEADER_VALUE
 } from "@workbench/contracts";
 
+const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function withMutationProvenance(init?: RequestInit): RequestInit | undefined {
+  if (!init?.method || !mutationMethods.has(init.method.toUpperCase())) return init;
+  return {
+    ...init,
+    headers: {
+      ...(init.headers as Record<string, string> | undefined),
+      [WORKBENCH_MUTATION_HEADER_NAME]: WORKBENCH_MUTATION_HEADER_VALUE
+    }
+  };
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, init);
+  const response = await fetch(`/api${path}`, withMutationProvenance(init));
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
     throw new Error(body?.error?.message ?? "请求失败，请稍后重试");
@@ -39,7 +58,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestVoid(path: string, init?: RequestInit): Promise<void> {
-  const response = await fetch(`/api${path}`, init);
+  const response = await fetch(`/api${path}`, withMutationProvenance(init));
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
     throw new Error(body?.error?.message ?? "请求失败，请稍后重试");
@@ -57,7 +76,7 @@ function backupFilename(contentDisposition: string | null): string {
 }
 
 async function exportDatabase(): Promise<string> {
-  const response = await fetch("/api/backup/export", { method: "POST" });
+  const response = await fetch("/api/backup/export", withMutationProvenance({ method: "POST" }));
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
     throw new Error(body?.error?.message ?? "导出失败，请稍后重试");
@@ -167,6 +186,12 @@ export const api = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content })
+  }),
+  getAppearance: () => requestJson<AppearancePreference>("/preferences/appearance"),
+  updateAppearance: (appearance: AppearanceSettings) => requestJson<AppearanceSettings>("/preferences/appearance", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(appearance)
   }),
   clearAiChatMessages: () => requestVoid("/ai-chat/messages", { method: "DELETE" }),
   getAiPolishPrompts: () => requestJson<AiPolishPrompt[]>("/ai-polish/prompts"),

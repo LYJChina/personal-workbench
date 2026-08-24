@@ -10,6 +10,7 @@ import { ReminderRepository } from "./reminder.repository.js";
 import { GenericReminderRepository } from "./generic-reminder.repository.js";
 import { HolidayRepository } from "../calendar/holiday.repository.js";
 import { VaultIntegrityError, VaultLockedError } from "../vault/vault.errors.js";
+import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 
 export interface ReminderRouterDependencies {
   secretStore: SecretStore;
@@ -29,7 +30,7 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
   const router = Router();
   const now = dependencies.now ?? (() => new Date());
 
-  router.use((_request, response, next) => {
+  router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.reminderRepository = new ReminderRepository(database);
     response.locals.holidayRepository = new HolidayRepository(database);
@@ -39,7 +40,7 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
       now()
     );
     response.locals.reminderSettingsRepository = new SettingsRepository(database);
-    response.once("finish", () => database.close());
+    response.locals.requestSignal = bindRequestLifecycle(request, response, () => database.close());
     next();
   });
 
@@ -65,11 +66,12 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     response.json(remindersFor(response).save("outbound-checkin", parsed.data, now()));
   });
 
-  router.post("/reminders/outbound-checkin/test", handle(async (_request, response) => {
+  router.post("/reminders/outbound-checkin/test", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const reminder = remindersFor(response).get("outbound-checkin", now());
     let delivery;
     try {
-      delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body });
+      delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body }, signal);
     } catch (error) {
       rethrowVaultAccessError(error);
       delivery = { status: "failure" as const, category: "unknown" as const };
@@ -77,7 +79,7 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     const result: ReminderTestResult = delivery.status === "success"
       ? { status: "success", message: "测试邮件已发送" }
       : { status: "failure", category: delivery.category, message: "测试邮件发送失败" };
-    response.json(ReminderTestResultSchema.parse(result));
+    if (requestCanContinue(request, response, signal)) response.json(ReminderTestResultSchema.parse(result));
   }));
 
   router.get("/reminders", (_request, response) => {
@@ -127,6 +129,7 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
   }));
 
   router.post("/reminders/:id/test", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     let reminder;
     try {
       reminder = genericFor(response).get(String(request.params.id), now());
@@ -136,14 +139,17 @@ export function createReminderRouter(paths: AppPaths, dependencies: ReminderRout
     }
     let delivery;
     try {
-      delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body });
+      delivery = await channelFor(response).send({ to: reminder.recipient, subject: reminder.subject, body: reminder.body }, signal);
     } catch (error) {
       rethrowVaultAccessError(error);
       delivery = { status: "failure" as const, category: "unknown" as const };
     }
-    response.json(delivery.status === "success"
-      ? { status: "success", message: "测试邮件已发送" }
-      : { status: "failure", category: delivery.category, message: "测试邮件发送失败" });
+    if (requestCanContinue(request, response, signal)) genericFor(response).recordManualAttempt(reminder, now(), delivery);
+    if (requestCanContinue(request, response, signal)) {
+      response.json(delivery.status === "success"
+        ? { status: "success", message: "测试邮件已发送" }
+        : { status: "failure", category: delivery.category, message: "测试邮件发送失败" });
+    }
   }));
 
   return router;

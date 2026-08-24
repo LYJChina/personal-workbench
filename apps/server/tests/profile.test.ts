@@ -218,7 +218,7 @@ describe("personal profile API", () => {
     const port = (server.address() as { port: number }).port;
     const socket = connect(port, "127.0.0.1");
     await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
-    socket.write("POST /api/profile/photo HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: multipart/form-data; boundary=boundary\r\nContent-Length: 99999\r\n\r\n--boundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"photo.png\"\r\nContent-Type: image/png\r\n\r\n");
+    socket.write("POST /api/profile/photo HTTP/1.1\r\nHost: 127.0.0.1\r\nX-LYJ-Workbench-Request: local-browser-v1\r\nContent-Type: multipart/form-data; boundary=boundary\r\nContent-Length: 99999\r\n\r\n--boundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"photo.png\"\r\nContent-Type: image/png\r\n\r\n");
     await openedPromise;
     socket.destroy();
     await closedPromise;

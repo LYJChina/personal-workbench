@@ -1,6 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, request as httpRequest } from "node:http";
+import express from "express";
 import request from "supertest";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +12,8 @@ import type { AiPolishGenerationInput, AiPolishGenerator, AiSystemPromptGenerati
 import type { SecretStore } from "../src/platform/secret-store";
 import { openDatabase } from "../src/db/database";
 import { resolveAppPaths } from "../src/config/paths";
+import { SettingsRepository } from "../src/modules/settings/settings.repository";
+import { createAiPolishRouter } from "../src/modules/ai-polish/ai-polish.routes";
 
 class MemorySecretStore implements SecretStore {
   private readonly secrets = new Map<string, string>();
@@ -79,6 +83,51 @@ describe("AI polish API", () => {
     await request(app).post("/api/ai-polish/generate").send({ kind: "unknown", primaryText: "内容", secondaryText: "", systemPrompt: "提示词" }).expect(400);
     await request(app).post("/api/ai-polish/generate").send({ kind: "general", primaryText: "", secondaryText: "", systemPrompt: "提示词" }).expect(400);
     expect(generator.inputs).toEqual([]);
+  });
+
+  it("does not emit a provider error response after the generation request aborts", async () => {
+    const paths = resolveAppPaths({ dataDir });
+    const setup = openDatabase(paths);
+    new SettingsRepository(setup).saveDeepSeekSettings({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat" }, true);
+    setup.close();
+    await secretStore.protectSecret("deepseek-api-key", "test-key");
+    let rejectProvider!: (error: Error) => void;
+    let providerStarted!: () => void;
+    const started = new Promise<void>((resolve) => { providerStarted = resolve; });
+    const generator = {
+      generatePolish: async () => new Promise<never>((_resolve, reject) => { rejectProvider = reject; providerStarted(); }),
+      generateSystemPrompt: async () => ({ prompt: "unused", model: "unused" })
+    } satisfies AiPolishGenerator;
+    let lateStatusCalls = 0;
+    const expressApp = express();
+    expressApp.use(express.json());
+    expressApp.use((_, response, next) => {
+      let closed = false;
+      response.once("close", () => { closed = true; });
+      const status = response.status.bind(response);
+      response.status = ((code: number) => {
+        if (closed) lateStatusCalls += 1;
+        return status(code);
+      }) as typeof response.status;
+      next();
+    });
+    expressApp.use("/api", createAiPolishRouter(paths, { secretStore, generator }));
+    const server = createServer(expressApp);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("test server did not bind");
+    const body = JSON.stringify({ kind: "general", primaryText: "内容", secondaryText: "", systemPrompt: "提示词" });
+    const aborted = new Promise<void>((resolve) => {
+      const pending = httpRequest({ host: "127.0.0.1", port: address.port, path: "/api/ai-polish/generate", method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } });
+      pending.on("error", () => resolve());
+      pending.end(body);
+      void started.then(() => pending.destroy());
+    });
+    await aborted;
+    rejectProvider(new Error("provider failed after abort"));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(lateStatusCalls).toBe(0);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   it("generates a custom system prompt without adding a history record", async () => {

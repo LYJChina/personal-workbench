@@ -32,7 +32,6 @@ describe("generic reminder migration", () => {
       `).all() as Array<{ name: string }>;
       expect(tables.map(({ name }) => name)).toEqual([
         "generic_reminder_attempts",
-        "generic_reminder_claims",
         "generic_reminders",
         "holiday_calendar_days",
         "holiday_calendar_syncs"
@@ -73,37 +72,29 @@ describe("generic reminder migration", () => {
       startDate: "2026-08-18", localTime: "09:30", weekdays: [], monthDay: null,
       totalOccurrences: null, recipient: "me@example.com", subject: "报销提醒", body: "请提交报销"
     };
-    const created = await request(app).post("/api/reminders").send(input);
+    const created = await request(app).post("/api/reminders").set("X-LYJ-Workbench-Request", "local-browser-v1").send(input);
     expect(created.status).toBe(201);
     expect((await request(app).get("/api/reminders")).body.items).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: created.body.id, name: "提交报销" })])
     );
-    expect((await request(app).put(`/api/reminders/${created.body.id}`).send({ ...input, name: "更新后" })).body.name)
+    expect((await request(app).put(`/api/reminders/${created.body.id}`).set("X-LYJ-Workbench-Request", "local-browser-v1").send({ ...input, name: "更新后" })).body.name)
       .toBe("更新后");
     expect((await request(app).get("/api/dashboard/upcoming-reminders")).body.items[0]).toHaveProperty("nextRun");
-    const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
-    const repository = new GenericReminderRepository(database, new HolidayRepository(database));
-    const saved = repository.get(created.body.id, new Date("2026-08-18T00:00:00.000Z"));
-    const scheduledFor = "2026-08-18T01:30:00.000Z";
-    const token = "manual-history-fixture";
-    expect(repository.acquireClaim(saved.id, scheduledFor, token, new Date("2026-08-18T01:30:00.000Z"), new Date("2026-08-18T01:31:00.000Z"))).toBe(true);
-    expect(repository.completeSuccess(saved, scheduledFor, token, new Date("2026-08-18T01:30:05.000Z"))).toBe(true);
-    database.close();
-    expect((await request(app).get("/api/reminder-attempts")).body.items).toEqual([
-      expect.objectContaining({ reminderId: created.body.id, reminderName: "更新后", status: "success" })
-    ]);
-    expect((await request(app).post(`/api/reminders/${created.body.id}/test`)).body).toEqual({
+    expect((await request(app).post(`/api/reminders/${created.body.id}/test`).set("X-LYJ-Workbench-Request", "local-browser-v1")).body).toEqual({
       status: "success",
       message: "测试邮件已发送"
     });
+    expect((await request(app).get("/api/reminder-attempts")).body.items).toEqual([
+      expect.objectContaining({ reminderId: created.body.id, reminderName: "更新后", status: "success" })
+    ]);
     expect(channel.send).toHaveBeenCalledWith({
       to: "me@example.com",
       subject: "报销提醒",
       body: "请提交报销"
-    });
-    expect((await request(app).delete(`/api/reminders/${created.body.id}`)).status).toBe(204);
+    }, expect.any(AbortSignal));
+    expect((await request(app).delete(`/api/reminders/${created.body.id}`).set("X-LYJ-Workbench-Request", "local-browser-v1")).status).toBe(204);
     expect((await request(app).get(`/api/reminders/${created.body.id}`)).status).toBe(404);
     await request(app).get("/api/reminder-scheduler/status").expect(404);
-    await request(app).post("/api/reminder-scheduler/sync").expect(404);
+    await request(app).post("/api/reminder-scheduler/sync").set("X-LYJ-Workbench-Request", "local-browser-v1").expect(404);
   });
 });

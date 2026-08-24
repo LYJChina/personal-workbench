@@ -57,12 +57,13 @@ export function ReminderEditor({ reminder, onSave, onClose }: {
         {form.lifecycle !== "once" && <label>重复规则<select value={form.scheduleType === "once" ? "daily" : form.scheduleType} onChange={(event) => update("scheduleType", event.target.value as GenericReminderInput["scheduleType"])}><option value="daily">每天</option><option value="workday">法定工作日</option><option value="weekly">每周</option><option value="monthly">每月</option></select></label>}
       </div>
       <div className="form-row"><label>开始日期<input type="date" required value={form.startDate} onChange={(event) => update("startDate", event.target.value)} /></label><label>提醒时间<input type="time" required value={form.localTime} onChange={(event) => update("localTime", event.target.value)} /></label></div>
-      {form.lifecycle === "finite" && <label>执行次数<input type="number" min="1" max="10000" required value={form.totalOccurrences ?? 1} onChange={(event) => update("totalOccurrences", Number(event.target.value))} /></label>}
+      {form.lifecycle === "finite" && <label>计划次数<input type="number" min="1" max="10000" required value={form.totalOccurrences ?? 1} onChange={(event) => update("totalOccurrences", Number(event.target.value))} /></label>}
       {form.lifecycle !== "once" && form.scheduleType === "weekly" && <fieldset><legend>每周星期</legend><div className="weekday-picker">{["日","一","二","三","四","五","六"].map((label, day) => <label key={day}><input type="checkbox" checked={form.weekdays.includes(day)} onChange={(event) => update("weekdays", event.target.checked ? [...form.weekdays, day].sort() : form.weekdays.filter((item) => item !== day))} />周{label}</label>)}</div></fieldset>}
       {form.lifecycle !== "once" && form.scheduleType === "monthly" && <label>每月日期<input type="number" min="1" max="31" value={form.monthDay ?? 1} onChange={(event) => update("monthDay", Number(event.target.value))} /></label>}
       <label>邮件主题<input required value={form.subject} onChange={(event) => update("subject", event.target.value)} /></label>
       <label>邮件正文<textarea required rows={5} value={form.body} onChange={(event) => update("body", event.target.value)} /></label>
-      <label className="inline-check"><input type="checkbox" checked={form.enabled} onChange={(event) => update("enabled", event.target.checked)} />创建后立即启用</label>
+      <label className="inline-check"><input type="checkbox" checked={form.enabled} onChange={(event) => update("enabled", event.target.checked)} />创建后纳入提醒计划</label>
+      <p className="muted-copy">提醒计划不会自动发送邮件；“测试邮件”仅在你手动点击时发送。</p>
       {error && <p role="alert" className="feedback-banner error">{error}</p>}
       <div className="form-actions"><button type="button" className="button-secondary" onClick={onClose}>取消</button><button type="submit" className="button-primary" disabled={saving}>{saving ? "保存中…" : "保存提醒"}</button></div>
     </form>

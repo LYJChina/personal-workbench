@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
+import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 import { GithubHolidayClient, type HolidayYearLoader } from "./holiday.client.js";
 import { HolidayRepository } from "./holiday.repository.js";
 
@@ -22,7 +23,7 @@ export function createHolidayRouter(paths: AppPaths, options: {
 } = {}): Router {
   const router = Router();
   const now = options.now ?? (() => new Date());
-  const loader = options.loader ?? ((year: number) => new GithubHolidayClient().fetchYear(year));
+  const loader = options.loader ?? ((year: number, signal?: AbortSignal) => new GithubHolidayClient().fetchYear(year, signal));
 
   router.get("/calendar", (request, response) => {
     const from = request.query.from;
@@ -46,24 +47,32 @@ export function createHolidayRouter(paths: AppPaths, options: {
       response.status(400).json({ error: { message: "Invalid holiday years", code: "VALIDATION_ERROR" } });
       return;
     }
-    const database = openDatabase(paths);
+    let database: ReturnType<typeof openDatabase> | undefined;
+    const signal = bindRequestLifecycle(request, response, () => database?.close());
     try {
-      const repository = new HolidayRepository(database);
       const updatedYears: number[] = [];
       const unavailableYears: number[] = [];
+      const loaded: Array<{ year: number; days: Awaited<ReturnType<HolidayYearLoader>> }> = [];
       for (const year of years) {
-        const days = await loader(year);
+        const days = await loader(year, signal);
+        if (!requestCanContinue(request, response, signal)) return;
+        loaded.push({ year, days });
+      }
+      if (!requestCanContinue(request, response, signal)) return;
+      database = openDatabase(paths);
+      const repository = new HolidayRepository(database);
+      for (const { year, days } of loaded) {
+        if (!requestCanContinue(request, response, signal)) return;
         if (!days) unavailableYears.push(year);
         else {
           repository.replaceYear(year, days, "bastengao/chinese-holidays-data", now());
           updatedYears.push(year);
         }
       }
+      if (!requestCanContinue(request, response, signal)) return;
       response.json({ updatedYears, unavailableYears });
     } catch (error) {
-      next(error);
-    } finally {
-      database.close();
+      if (requestCanContinue(request, response, signal)) next(error);
     }
   });
 

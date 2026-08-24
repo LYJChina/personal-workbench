@@ -63,8 +63,10 @@ const defaultTransportFactory: MailTransportFactory = (configuration) => nodemai
 export class EmailNotificationChannel implements NotificationChannel {
   public constructor(private readonly dependencies: EmailNotificationChannelDependencies) {}
 
-  public async send(message: NotificationMessage): Promise<DeliveryResult> {
+  public async send(message: NotificationMessage, signal?: AbortSignal): Promise<DeliveryResult> {
+    signal?.throwIfAborted();
     const password = await this.dependencies.secretStore.readSecret(smtpSecretName);
+    signal?.throwIfAborted();
     const settings = this.dependencies.loadSettings(Boolean(password));
     if (!complete(settings, password, message)) return { status: "failure", category: "not_configured" };
 
@@ -80,17 +82,22 @@ export class EmailNotificationChannel implements NotificationChannel {
       socketTimeout: timeoutMs,
       tls: { servername: settings.smtpHost }
     });
+    const abortTransport = () => transport.close();
+    signal?.addEventListener("abort", abortTransport, { once: true });
     try {
+      signal?.throwIfAborted();
       await transport.sendMail({
         from: settings.fromAddress,
         to: message.to,
         subject: message.subject,
         text: message.body
       });
+      signal?.throwIfAborted();
       return { status: "success" };
     } catch (error) {
       return { status: "failure", category: failureCategory(error) };
     } finally {
+      signal?.removeEventListener("abort", abortTransport);
       transport.close();
     }
   }

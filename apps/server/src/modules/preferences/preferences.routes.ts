@@ -1,8 +1,9 @@
 import { Router, type Response } from "express";
-import { DashboardLayoutSchema, NavigationItemSchema, ThemePreferenceSchema } from "@workbench/contracts";
+import { AppearanceSettingsSchema, DashboardLayoutSchema, NavigationItemSchema, ThemePreferenceSchema } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import { PreferencesRepository } from "./preferences.repository.js";
+import { bindRequestLifecycle } from "../../http/request-lifecycle.js";
 
 const layoutInputSchema = DashboardLayoutSchema.array().min(1).superRefine((items, context) => {
   if (new Set(items.map((item) => item.moduleId)).size !== items.length) {
@@ -27,10 +28,10 @@ function validationError(response: Response): void {
 export function createPreferencesRouter(paths: AppPaths): Router {
   const router = Router();
 
-  router.use((_request, response, next) => {
+  router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.preferencesRepository = new PreferencesRepository(database);
-    response.once("finish", () => database.close());
+    bindRequestLifecycle(request, response, () => database.close());
     next();
   });
 
@@ -55,6 +56,13 @@ export function createPreferencesRouter(paths: AppPaths): Router {
     const parsed = ThemePreferenceSchema.safeParse(request.body);
     if (!parsed.success) return validationError(response);
     return response.json({ theme: repositoryFor(response).saveTheme(parsed.data.theme) });
+  });
+
+  router.get("/preferences/appearance", (_request, response) => response.json({ appearance: repositoryFor(response).getAppearance() }));
+  router.put("/preferences/appearance", (request, response) => {
+    const parsed = AppearanceSettingsSchema.safeParse(request.body);
+    if (!parsed.success) return validationError(response);
+    return response.json(repositoryFor(response).saveAppearance(parsed.data));
   });
 
   return router;

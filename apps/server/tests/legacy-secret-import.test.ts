@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
@@ -59,6 +59,17 @@ describe("one-time legacy Windows secret import", () => {
     expect(detectLegacyWindowsSecrets(secretsDir, "win32")).toBe(files.some((file) =>
       file === "deepseek-api-key.bin" || file === "smtp-password.bin"
     ));
+  });
+
+  it.runIf(process.platform === "win32")("rejects a legacy secrets root implemented as a Windows junction", async () => {
+    const dataDir = await createDataDir();
+    const outside = join(dataDir, "outside-secrets");
+    const secretsDir = join(dataDir, "secrets");
+    await mkdir(outside);
+    await writeFile(join(outside, "deepseek-api-key.bin"), "legacy blob");
+    await symlink(outside, secretsDir, "junction");
+
+    expect(detectLegacyWindowsSecrets(secretsDir, "win32")).toBe(false);
   });
 
   it("does not probe or import on non-Windows platforms", async () => {

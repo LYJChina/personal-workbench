@@ -1,15 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { AppearanceSettings } from "@workbench/contracts";
+import { api as defaultApi } from "../lib/api";
 
 export type WorkbenchSkin = "aurora" | "paper" | "sage";
 export type WorkbenchDensity = "comfortable" | "compact";
 export type WorkbenchRadius = "rounded" | "subtle";
 
-export interface AppearanceSettings {
-  skin: WorkbenchSkin;
-  density: WorkbenchDensity;
-  radius: WorkbenchRadius;
-  glass: boolean;
-}
+export type { AppearanceSettings } from "@workbench/contracts";
 
 export const defaultAppearance: AppearanceSettings = {
   skin: "aurora",
@@ -24,6 +21,8 @@ interface AppearanceContextValue {
   appearance: AppearanceSettings;
   updateAppearance: (patch: Partial<AppearanceSettings>) => void;
   resetAppearance: () => void;
+  persistenceError: boolean;
+  retryAppearance: () => void;
 }
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
@@ -37,19 +36,74 @@ function isAppearance(value: unknown): value is AppearanceSettings {
     && typeof candidate.glass === "boolean";
 }
 
-function loadAppearance(): AppearanceSettings {
+function loadLegacyAppearance(): AppearanceSettings | null {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (!saved) return defaultAppearance;
+    if (!saved) return null;
     const parsed: unknown = JSON.parse(saved);
-    return isAppearance(parsed) ? parsed : defaultAppearance;
+    return isAppearance(parsed) ? parsed : null;
   } catch {
-    return defaultAppearance;
+    return null;
   }
 }
 
-export function AppearanceProvider({ children, initialAppearance }: { children: React.ReactNode; initialAppearance?: AppearanceSettings }) {
-  const [appearance, setAppearance] = useState<AppearanceSettings>(() => initialAppearance ?? loadAppearance());
+interface AppearanceApi {
+  getAppearance(): Promise<{ appearance: AppearanceSettings | null }>;
+  updateAppearance(appearance: AppearanceSettings): Promise<AppearanceSettings>;
+}
+
+export function AppearanceProvider({ children, initialAppearance, api: appearanceApi = defaultApi }: {
+  children: React.ReactNode;
+  initialAppearance?: AppearanceSettings;
+  api?: AppearanceApi;
+}) {
+  const [appearance, setAppearance] = useState<AppearanceSettings>(() => initialAppearance ?? defaultAppearance);
+  const [persistenceError, setPersistenceError] = useState(false);
+  const appearanceRef = useRef(appearance);
+  const interactionVersion = useRef(0);
+  const writeTail = useRef<Promise<unknown>>(Promise.resolve());
+  const failedPersistence = useRef<{ target: AppearanceSettings; generation: number; legacy: boolean } | null>(null);
+
+  const persist = useCallback((next: AppearanceSettings, generation: number, legacy = false) => {
+    const write = writeTail.current.catch(() => undefined).then(() => appearanceApi.updateAppearance(next));
+    writeTail.current = write;
+    void write.then(() => {
+      if (failedPersistence.current && failedPersistence.current.generation <= generation) failedPersistence.current = null;
+      if (interactionVersion.current === generation) setPersistenceError(false);
+    }, () => {
+      if (interactionVersion.current !== generation) return;
+      failedPersistence.current = { target: next, generation, legacy };
+      setPersistenceError(true);
+    });
+    return write;
+  }, [appearanceApi]);
+
+  useEffect(() => {
+    if (initialAppearance) return;
+    let active = true;
+    const bootstrapVersion = interactionVersion.current;
+    void appearanceApi.getAppearance().then(async ({ appearance: stored }) => {
+      if (!active || interactionVersion.current !== bootstrapVersion) return;
+      if (stored) {
+        window.localStorage.removeItem(STORAGE_KEY);
+        appearanceRef.current = stored;
+        setAppearance(stored);
+        return;
+      }
+      const legacy = loadLegacyAppearance();
+      if (!legacy) return;
+      try {
+        const confirmed = await persist(legacy, bootstrapVersion, true);
+        if (!active || interactionVersion.current !== bootstrapVersion) return;
+        appearanceRef.current = confirmed;
+        setAppearance(confirmed);
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // Keep the validated legacy value for a later retry and retain the safe fallback.
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [appearanceApi, initialAppearance, persist]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -57,20 +111,39 @@ export function AppearanceProvider({ children, initialAppearance }: { children: 
     root.dataset.density = appearance.density;
     root.dataset.radius = appearance.radius;
     root.dataset.glass = String(appearance.glass);
-    if (!initialAppearance) {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appearance));
-      } catch {
-        // Visual preferences remain usable for the session when storage is unavailable.
-      }
-    }
   }, [appearance, initialAppearance]);
 
   const value = useMemo<AppearanceContextValue>(() => ({
     appearance,
-    updateAppearance: (patch) => setAppearance((current) => ({ ...current, ...patch })),
-    resetAppearance: () => setAppearance(defaultAppearance)
-  }), [appearance]);
+    updateAppearance: (patch) => {
+      const generation = ++interactionVersion.current;
+      failedPersistence.current = null;
+      setPersistenceError(false);
+      const next = { ...appearanceRef.current, ...patch };
+      appearanceRef.current = next;
+      setAppearance(next);
+      void persist(next, generation);
+    },
+    resetAppearance: () => {
+      const generation = ++interactionVersion.current;
+      failedPersistence.current = null;
+      setPersistenceError(false);
+      appearanceRef.current = defaultAppearance;
+      setAppearance(defaultAppearance);
+      void persist(defaultAppearance, generation);
+    },
+    persistenceError,
+    retryAppearance: () => {
+      const failed = failedPersistence.current;
+      if (!failed || failed.generation !== interactionVersion.current) return;
+      void persist(failed.target, failed.generation, failed.legacy).then((confirmed) => {
+        if (interactionVersion.current !== failed.generation) return;
+        appearanceRef.current = confirmed;
+        setAppearance(confirmed);
+        if (failed.legacy) window.localStorage.removeItem(STORAGE_KEY);
+      }).catch(() => undefined);
+    }
+  }), [appearance, persist, persistenceError]);
 
   return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>;
 }

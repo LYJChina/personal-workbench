@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { DashboardLayout, NavigationItem, Theme } from "@workbench/contracts";
+import { AppearanceSettingsSchema, type AppearanceSettings, type DashboardLayout, type NavigationItem, type Theme } from "@workbench/contracts";
 
 const defaultLayout: DashboardLayout[] = [
   { moduleId: "profile", x: 0, y: 0, w: 4, h: 5, enabled: true },
@@ -78,6 +78,23 @@ export class PreferencesRepository {
   public saveTheme(theme: Theme): Theme {
     this.database.prepare("INSERT INTO app_settings (key, value) VALUES ('theme', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").run(theme);
     return this.getTheme();
+  }
+
+  public getAppearance(): AppearanceSettings | null {
+    const row = this.database.prepare("SELECT value FROM app_settings WHERE key = 'appearance'").get() as { value: string } | undefined;
+    if (!row) return null;
+    try {
+      const parsed = AppearanceSettingsSchema.safeParse(JSON.parse(row.value));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public saveAppearance(appearance: AppearanceSettings): AppearanceSettings {
+    this.database.prepare("INSERT INTO app_settings (key, value) VALUES ('appearance', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP")
+      .run(JSON.stringify(appearance));
+    return appearance;
   }
 
   private seed(): void {

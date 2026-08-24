@@ -92,19 +92,19 @@ export function ReminderPage({ api = defaultApi }: { api?: ReminderCenterApi }) 
   if (loading) return <section className="page-loading"><span className="spinner" />正在加载提醒事项…</section>;
 
   return <section className="reminder-page reminder-center-page">
-    <header className="page-heading reminder-center-heading"><div><span className="eyebrow">REMINDERS</span><h2>提醒事项</h2><p>管理提醒事项，需要时可手动发送邮件。</p></div><div className="heading-actions"><button type="button" className="button-primary" onClick={() => setEditing(null)}>新建提醒</button></div></header>
+    <header className="page-heading reminder-center-heading"><div><span className="eyebrow">REMINDERS</span><h2>提醒事项</h2><p>管理提醒计划；计划不会自动发送邮件，需要时请手动测试发送。</p></div><div className="heading-actions"><button type="button" className="button-primary" onClick={() => setEditing(null)}>新建提醒</button></div></header>
     {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`feedback-banner ${feedback.kind}`}>{feedback.text}</p>}
     <div className="reminder-workspace">
       <div className="reminder-workspace-topbar">
         <div className="reminder-view-tabs" role="tablist" aria-label="提醒视图">
           <button type="button" role="tab" aria-selected={view === "pending"} className={view === "pending" ? "active" : ""} onClick={() => setView("pending")}>
-            <span>等待执行</span><strong>{reminders.length}</strong>
+            <span>提醒计划</span><strong>{reminders.length}</strong>
           </button>
           <button type="button" role="tab" aria-selected={view === "history"} className={view === "history" ? "active" : ""} onClick={() => setView("history")}>
-            <span>已执行</span><strong>{attempts.length}</strong>
+            <span>历史发送记录</span><strong>{attempts.length}</strong>
           </button>
         </div>
-        <p>{view === "pending" ? "按下一次执行时间查看和管理提醒" : "查看每一次邮件执行结果"}</p>
+        <p>{view === "pending" ? "按计划时间查看和管理提醒元数据" : "查看每一次手动邮件发送结果"}</p>
       </div>
       {view === "pending"
         ? <ReminderList reminders={reminders} filter={filter} onFilter={setFilter} onEdit={setEditing} onDelete={(item) => void remove(item)} onTest={(item) => void test(item)} />

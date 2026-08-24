@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const WORKBENCH_MUTATION_HEADER_NAME = "X-LYJ-Workbench-Request";
+export const WORKBENCH_MUTATION_HEADER_VALUE = "local-browser-v1";
+
 export const ApiErrorSchema = z.object({
   error: z.object({
     message: z.string(),
@@ -70,6 +73,13 @@ export const NavigationItemSchema = z.object({
 
 export const ThemeSchema = z.enum(["light", "dark"]);
 export const ThemePreferenceSchema = z.object({ theme: ThemeSchema });
+export const AppearanceSettingsSchema = z.object({
+  skin: z.enum(["aurora", "paper", "sage"]),
+  density: z.enum(["comfortable", "compact"]),
+  radius: z.enum(["rounded", "subtle"]),
+  glass: z.boolean()
+}).strict();
+export const AppearancePreferenceSchema = z.object({ appearance: AppearanceSettingsSchema.nullable() });
 
 export const DeepSeekSettingsSchema = z.object({
   baseUrl: z.string().trim().min(1).max(2_000),
@@ -287,6 +297,8 @@ export type DashboardLayout = z.infer<typeof DashboardLayoutSchema>;
 export type NavigationItem = z.infer<typeof NavigationItemSchema>;
 export type Theme = z.infer<typeof ThemeSchema>;
 export type ThemePreference = z.infer<typeof ThemePreferenceSchema>;
+export type AppearanceSettings = z.infer<typeof AppearanceSettingsSchema>;
+export type AppearancePreference = z.infer<typeof AppearancePreferenceSchema>;
 export type DeepSeekSettings = z.infer<typeof DeepSeekSettingsSchema>;
 export type DeepSeekSettingsUpdate = z.infer<typeof DeepSeekSettingsUpdateSchema>;
 export type MailTransportMode = z.infer<typeof MailTransportModeSchema>;

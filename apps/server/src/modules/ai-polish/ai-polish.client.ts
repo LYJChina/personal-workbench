@@ -7,12 +7,14 @@ export interface AiPolishGenerationInput extends AiPolishInput {
   baseUrl: string;
   model: string;
   apiKey: string;
+  signal?: AbortSignal;
 }
 
 export interface AiSystemPromptGenerationInput extends AiSystemPromptInput {
   baseUrl: string;
   model: string;
   apiKey: string;
+  signal?: AbortSignal;
 }
 
 export interface AiPolishGenerator {
@@ -38,8 +40,11 @@ export class AiPolishClient implements AiPolishGenerator {
     return { prompt: generated.content, model: generated.model };
   }
 
-  private async complete(input: { baseUrl: string; model: string; apiKey: string }, messages: ChatMessage[], temperature: number): Promise<{ content: string; model: string }> {
+  private async complete(input: { baseUrl: string; model: string; apiKey: string; signal?: AbortSignal }, messages: ChatMessage[], temperature: number): Promise<{ content: string; model: string }> {
     const controller = new AbortController();
+    const abortFromRequest = () => controller.abort();
+    input.signal?.addEventListener("abort", abortFromRequest, { once: true });
+    if (input.signal?.aborted) controller.abort();
     const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const response = await this.fetchImplementation(`${input.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
@@ -63,6 +68,7 @@ export class AiPolishClient implements AiPolishGenerator {
       throw new DeepSeekClientError("upstream");
     } finally {
       clearTimeout(timeout);
+      input.signal?.removeEventListener("abort", abortFromRequest);
     }
   }
 }

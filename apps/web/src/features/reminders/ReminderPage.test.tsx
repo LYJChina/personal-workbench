@@ -33,25 +33,26 @@ function createApi(overrides: Partial<ReminderCenterApi> = {}): ReminderCenterAp
 }
 
 describe("generic reminder center", () => {
-  it("switches between pending reminders and execution history in one workspace", async () => {
+  it("uses explicit plan metadata and manual-send history language", async () => {
     const user = userEvent.setup();
     const api = createApi();
     render(<MemoryRouter><ReminderPage api={api} /></MemoryRouter>);
 
     expect(await screen.findByRole("heading", { name: "提醒事项" })).toBeVisible();
     expect(screen.getByRole("tablist", { name: "提醒视图" })).toBeVisible();
-    expect(screen.getByRole("tab", { name: /等待执行/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "等待执行" })).toHaveTextContent("外勤打卡");
-    expect(screen.queryByRole("region", { name: "已执行" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /提醒计划/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "提醒计划" })).toHaveTextContent("计划时间");
+    expect(screen.getByRole("region", { name: "提醒计划" })).toHaveTextContent("纳入计划");
+    expect(screen.queryByRole("region", { name: "历史发送记录" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: /已执行/ }));
-    expect(screen.getByRole("tab", { name: /已执行/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "已执行" })).toHaveTextContent("发送成功");
+    await user.click(screen.getByRole("tab", { name: /历史发送记录/ }));
+    expect(screen.getByRole("tab", { name: /历史发送记录/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "历史发送记录" })).toHaveTextContent("手动发送时间");
 
-    await user.click(screen.getByRole("tab", { name: /等待执行/ }));
+    await user.click(screen.getByRole("tab", { name: /提醒计划/ }));
     expect(screen.getByRole("button", { name: "测试邮件" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "同步系统计划" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/系统计划/)).not.toBeInTheDocument();
+    expect(screen.getByText(/计划不会自动发送邮件/)).toBeVisible();
+    expect(document.body.textContent).not.toMatch(/等待执行|下次执行|系统计划/);
   });
 
   it("creates a finite workday email reminder", async () => {
@@ -67,7 +68,7 @@ describe("generic reminder center", () => {
     await user.selectOptions(screen.getByLabelText("重复规则"), "workday");
     fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "2026-08-19" } });
     fireEvent.change(screen.getByLabelText("提醒时间"), { target: { value: "09:00" } });
-    fireEvent.change(screen.getByLabelText("执行次数"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("计划次数"), { target: { value: "3" } });
     await user.type(screen.getByLabelText("邮件主题"), "提交报销");
     await user.type(screen.getByLabelText("邮件正文"), "请提交报销材料。");
     await user.click(screen.getByRole("button", { name: "保存提醒" }));

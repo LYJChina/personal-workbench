@@ -100,7 +100,7 @@ describe("complete application navigation", () => {
 
     await user.click(screen.getByRole("link", { name: "提醒事项" }));
     expect(await screen.findByRole("heading", { name: "提醒事项" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "等待执行" })).toHaveTextContent("外勤打卡");
+    expect(screen.getByRole("region", { name: "提醒计划" })).toHaveTextContent("外勤打卡");
     expect(screen.getByText("密码保险箱")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("密码保险箱").closest("a")).toBeNull();
   });

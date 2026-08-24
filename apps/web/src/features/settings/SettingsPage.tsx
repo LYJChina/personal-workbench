@@ -33,7 +33,7 @@ function messageFor(error: unknown): string {
 
 export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProps) {
   const { theme, setTheme } = useTheme();
-  const { appearance, updateAppearance, resetAppearance } = useAppearance();
+  const { appearance, updateAppearance, resetAppearance, persistenceError, retryAppearance } = useAppearance();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
@@ -161,7 +161,7 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
       </section>
 
       <section aria-labelledby="mail-heading">
-        <div className="settings-section-heading"><div className="card-icon warm"><Icon name="mail" /></div><div><h3 id="mail-heading">邮件通知</h3><p>为一次性、有限次数和常驻提醒提供发送服务</p></div><span className={`status-chip ${settings.mail.smtpPasswordConfigured ? "" : "neutral"}`}>{settings.mail.smtpPasswordConfigured ? "SMTP 密码已配置" : "SMTP 密码未配置"}</span></div>
+        <div className="settings-section-heading"><div className="card-icon warm"><Icon name="mail" /></div><div><h3 id="mail-heading">邮件通知</h3><p>仅供手动测试发送；提醒计划不会自动发送邮件</p></div><span className={`status-chip ${settings.mail.smtpPasswordConfigured ? "" : "neutral"}`}>{settings.mail.smtpPasswordConfigured ? "SMTP 密码已配置" : "SMTP 密码未配置"}</span></div>
         <form onSubmit={saveMail}>
           <div className="form-grid three"><label>SMTP 主机<input required value={settings.mail.smtpHost} onChange={(event) => updateMail("smtpHost", event.target.value)} /></label><label>SMTP 端口<input type="number" min="1" max="65535" required value={settings.mail.smtpPort} onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, smtpPort: Number(event.target.value) } } : current)} /></label><label>传输模式<select value={settings.mail.transportMode} onChange={(event) => setSettings((current) => current ? { ...current, mail: { ...current.mail, transportMode: event.target.value as MailSettings["transportMode"] } } : current)}><option value="starttls">STARTTLS</option><option value="tls">TLS</option></select></label></div>
           <div className="form-grid"><label>SMTP 用户名<input value={settings.mail.smtpUsername} onChange={(event) => updateMail("smtpUsername", event.target.value)} /></label>
@@ -180,7 +180,7 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
       </section>
 
       <section aria-labelledby="appearance-heading">
-        <div className="settings-section-heading"><div className="card-icon violet"><Icon name="palette" /></div><div><h3 id="appearance-heading">外观</h3><p>你的外观工作室；所有偏好仅保存在本机浏览器</p></div></div>
+        <div className="settings-section-heading"><div className="card-icon violet"><Icon name="palette" /></div><div><h3 id="appearance-heading">外观</h3><p>外观偏好保存在权威 SQLite 数据库中，并随数据库备份迁移</p></div></div>
         <fieldset className="skin-picker">
           <legend>界面皮肤</legend>
           <div className="skin-options">
@@ -206,6 +206,7 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
           <label className="appearance-toggle"><input type="checkbox" checked={appearance.glass} onChange={(event) => updateAppearance({ glass: event.target.checked })} /><span><strong>通透面板</strong><small>启用背景模糊与轻微层次感</small></span></label>
           <button className="button-secondary" type="button" onClick={resetAppearance}>恢复默认外观</button>
         </div>
+        {persistenceError ? <div role="alert"><span>外观偏好尚未保存，当前预览不会丢失。</span><button className="button-secondary" type="button" onClick={retryAppearance}>重试保存外观</button></div> : null}
       </section>
     </section>
   );

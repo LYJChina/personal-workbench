@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import type { SecretStore } from "../src/platform/secret-store";
 
+const mutationHeaderName = "X-LYJ-Workbench-Request";
+const mutationHeaderValue = "local-browser-v1";
+
 class EmptySecretStore implements SecretStore {
   public async protectSecret(): Promise<void> {}
   public async readSecret(): Promise<string | null> { return null; }
@@ -79,12 +82,123 @@ describe("production-local security boundaries", () => {
 
     const response = await request(app)
       .post("/api/daily-reports/generate")
+      .set(mutationHeaderName, mutationHeaderValue)
       .send({ completed: "完成安全检查", risks: "" });
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: { message: "Internal Server Error", code: "INTERNAL_ERROR" } });
     expect(JSON.stringify(response.body)).not.toMatch(/Bearer|api[_-]?key|smtp|server-secret|mail-secret/i);
     expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(/Bearer|api[_-]?key|smtp|server-secret|mail-secret/i);
+  });
+
+  it.each([
+    "attacker.example:3001",
+    "localhost:3001",
+    "127.0.0.1.evil:3001",
+    "127%2e0%2e0%2e1:3001",
+    "[::1]:3001",
+    "user@127.0.0.1:3001",
+    "127.0.0.1:0",
+    "127.0.0.1:65536",
+    "127.0.0.1:3001,attacker.example"
+  ])("rejects untrusted Host %s before exposing API data", async (host) => {
+    const app = createApp({ dataDir: tempDir, secretStore: new EmptySecretStore() });
+
+    const response = await request(app).get("/api/profile").set("Host", host);
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: { message: "Forbidden", code: "FORBIDDEN" } });
+  });
+
+  it("rejects forwarded-host overrides even when Host is valid", async () => {
+    const app = createApp({ dataDir: tempDir, secretStore: new EmptySecretStore() });
+    const response = await request(app)
+      .get("/api/profile")
+      .set("Host", "127.0.0.1:3001")
+      .set("X-Forwarded-Host", "attacker.example");
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects hostile Origin and missing mutation provenance without invoking SMTP", async () => {
+    const send = vi.fn().mockResolvedValue({ status: "success" as const });
+    const app = createApp({
+      dataDir: tempDir,
+      secretStore: new EmptySecretStore(),
+      reminderChannel: { send }
+    });
+
+    const hostileOrigin = await request(app)
+      .post("/api/reminders/outbound-checkin/test")
+      .set("Host", "127.0.0.1:3001")
+      .set("Origin", "http://attacker.example")
+      .set(mutationHeaderName, mutationHeaderValue)
+      .set("Content-Type", "text/plain")
+      .send("hostile");
+    const missingHeader = await request(app)
+      .post("/api/reminders/outbound-checkin/test")
+      .set("Host", "127.0.0.1:3001")
+      .set("Origin", "http://127.0.0.1:5173")
+      .set(mutationHeaderName, "missing");
+
+    expect(hostileOrigin.status).toBe(403);
+    expect(missingHeader.status).toBe(403);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each(["/API/reminders/outbound-checkin/test", "/Api/reminders/outbound-checkin/test"])(
+    "rejects mixed-case API mutation %s without provenance before invoking SMTP",
+    async (path) => {
+      const send = vi.fn().mockResolvedValue({ status: "success" as const });
+      const app = createApp({
+        dataDir: tempDir,
+        secretStore: new EmptySecretStore(),
+        reminderChannel: { send }
+      });
+
+      const response = await request(app)
+        .post(path)
+        .set("Host", "127.0.0.1:3001")
+        .set("Origin", "http://127.0.0.1:5173")
+        .set(mutationHeaderName, "missing");
+
+      expect(response.status).toBe(403);
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects an unprovenanced backup export without invoking the exporter", async () => {
+    const createSnapshot = vi.fn();
+    const app = createApp({
+      dataDir: tempDir,
+      secretStore: new EmptySecretStore(),
+      backupExporter: { createSnapshot }
+    });
+
+    const response = await request(app)
+      .post("/api/backup/export")
+      .set("Host", "127.0.0.1:3001")
+      .set(mutationHeaderName, "missing");
+
+    expect(response.status).toBe(403);
+    expect(createSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid Vite origin and mutation provenance", async () => {
+    const send = vi.fn().mockResolvedValue({ status: "success" as const });
+    const app = createApp({
+      dataDir: tempDir,
+      secretStore: new EmptySecretStore(),
+      reminderChannel: { send }
+    });
+
+    const response = await request(app)
+      .post("/api/reminders/outbound-checkin/test")
+      .set("Host", "127.0.0.1:3001")
+      .set("Origin", "http://127.0.0.1:5173")
+      .set(mutationHeaderName, mutationHeaderValue);
+
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
 });

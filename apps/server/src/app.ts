@@ -27,6 +27,7 @@ import { AiChatClient, type AiChatGenerator } from "./modules/ai-chat/ai-chat.cl
 import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
 import { BackupService, type BackupExporter } from "./modules/backup/backup.service.js";
 import { createBackupRouter, type BackupReadStreamFactory } from "./modules/backup/backup.routes.js";
+import { enforceLocalRequestBoundary } from "./security/request-boundary.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -72,6 +73,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const aiPolishClient = options.aiPolishClient ?? new AiPolishClient();
   const aiChatClient = options.aiChatClient ?? new AiChatClient();
 
+  app.use(enforceLocalRequestBoundary);
   app.use(express.json());
 
   app.get("/api/health", (_request, response) => {

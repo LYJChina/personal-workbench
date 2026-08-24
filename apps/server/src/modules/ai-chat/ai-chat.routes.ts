@@ -7,6 +7,7 @@ import { isAllowedDeepSeekUrl } from "../settings/settings.routes.js";
 import { SettingsRepository } from "../settings/settings.repository.js";
 import { AiChatClientError, type AiChatGenerator, type AiChatContextMessage } from "./ai-chat.client.js";
 import { AiChatRepository } from "./ai-chat.repository.js";
+import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 
 const deepSeekSecretName = "deepseek-api-key";
 const maximumContextMessages = 20;
@@ -47,11 +48,11 @@ function generationFailure(response: Response, error: unknown): void {
 export function createAiChatRouter(paths: AppPaths, dependencies: AiChatRouterDependencies): Router {
   const router = Router();
 
-  router.use((_request, response, next) => {
+  router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.aiChatRepository = new AiChatRepository(database);
     response.locals.aiChatSettingsRepository = new SettingsRepository(database);
-    response.once("finish", () => database.close());
+    response.locals.requestSignal = bindRequestLifecycle(request, response, () => database.close());
     next();
   });
 
@@ -63,12 +64,14 @@ export function createAiChatRouter(paths: AppPaths, dependencies: AiChatRouterDe
   router.get("/ai-chat/messages", (_request, response) => response.json(repositoryFor(response).list()));
 
   router.post("/ai-chat/messages", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const parsed = AiChatInputSchema.safeParse(request.body);
     if (!parsed.success) {
       response.status(400).json({ error: { message: "请输入要发送的问题", code: "VALIDATION_ERROR" } });
       return;
     }
     const apiKey = await dependencies.secretStore.readSecret(deepSeekSecretName);
+    if (!requestCanContinue(request, response, signal)) return;
     const settings = settingsFor(response).getDeepSeekSettings(Boolean(apiKey));
     if (!apiKey || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) {
       response.status(400).json({ error: { message: "请先在设置中配置大模型 API", code: "NOT_CONFIGURED" } });
@@ -83,11 +86,13 @@ export function createAiChatRouter(paths: AppPaths, dependencies: AiChatRouterDe
         baseUrl: settings.baseUrl,
         model: settings.model,
         apiKey,
-        messages: context
+        messages: context,
+        signal
       });
+      if (!requestCanContinue(request, response, signal)) return;
       response.status(201).json(repository.create("assistant", generated.content, generated.model));
     } catch (error) {
-      generationFailure(response, error);
+      if (requestCanContinue(request, response, signal)) generationFailure(response, error);
     }
   }));
 

@@ -14,6 +14,7 @@ import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
 import type { SecretStore } from "../../platform/secret-store.js";
 import { SettingsRepository } from "./settings.repository.js";
+import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 
 const DEEPSEEK_SECRET_NAME = "deepseek-api-key";
 const SMTP_SECRET_NAME = "smtp-password";
@@ -23,6 +24,7 @@ export interface ProviderConnectionInput {
   model: string;
   apiKey: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export interface MailConnectionInput {
@@ -33,6 +35,7 @@ export interface MailConnectionInput {
   fromAddress: string;
   smtpPassword: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export type DeepSeekConnectionTester = (input: ProviderConnectionInput) => Promise<void>;
@@ -100,6 +103,9 @@ function categoryFor(error: unknown): Exclude<ConnectionTestStatus, "success"> {
 
 export const testDeepSeekConnection: DeepSeekConnectionTester = async (input) => {
   const controller = new AbortController();
+  const abortFromRequest = () => controller.abort();
+  input.signal?.addEventListener("abort", abortFromRequest, { once: true });
+  if (input.signal?.aborted) controller.abort();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs);
   try {
     const response = await fetch(`${input.baseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -119,6 +125,7 @@ export const testDeepSeekConnection: DeepSeekConnectionTester = async (input) =>
     throw error;
   } finally {
     clearTimeout(timer);
+    input.signal?.removeEventListener("abort", abortFromRequest);
   }
 };
 
@@ -134,9 +141,14 @@ export const testMailConnection: MailConnectionTester = async (input) => {
     socketTimeout: input.timeoutMs,
     tls: { servername: input.smtpHost }
   });
+  const abortTransport = () => transport.close();
+  input.signal?.addEventListener("abort", abortTransport, { once: true });
   try {
+    input.signal?.throwIfAborted();
     await transport.verify();
+    input.signal?.throwIfAborted();
   } finally {
+    input.signal?.removeEventListener("abort", abortTransport);
     transport.close();
   }
 };
@@ -147,10 +159,10 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
   const providerTester = dependencies.deepSeekConnectionTester ?? testDeepSeekConnection;
   const mailTester = dependencies.mailConnectionTester ?? testMailConnection;
 
-  router.use((_request, response, next) => {
+  router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.settingsRepository = new SettingsRepository(database);
-    response.once("finish", () => database.close());
+    response.locals.requestSignal = bindRequestLifecycle(request, response, () => database.close());
     next();
   });
 
@@ -158,11 +170,13 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
   const handle = (handler: (request: Request, response: Response) => Promise<void>) =>
     (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);
 
-  router.get("/settings", handle(async (_request, response) => {
+  router.get("/settings", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const [apiKey, smtpPassword] = await Promise.all([
       dependencies.secretStore.readSecret(DEEPSEEK_SECRET_NAME),
       dependencies.secretStore.readSecret(SMTP_SECRET_NAME)
     ]);
+    if (!requestCanContinue(request, response, signal)) return;
     const repository = repositoryFor(response);
     response.json(SettingsResponseSchema.parse({
       deepseek: repository.getDeepSeekSettings(Boolean(apiKey)),
@@ -171,45 +185,53 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
   }));
 
   router.put("/settings/deepseek", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const parsed = DeepSeekSettingsUpdateSchema.safeParse(request.body);
     if (!parsed.success) return validationError(response);
     if (request.body?.baseUrl !== parsed.data.baseUrl || !isAllowedDeepSeekUrl(parsed.data.baseUrl, Boolean(dependencies.allowLoopbackHttp))) return validationError(response);
     const replacement = parsed.data.apiKey?.trim();
     if (replacement) await dependencies.secretStore.protectSecret(DEEPSEEK_SECRET_NAME, replacement);
+    if (!requestCanContinue(request, response, signal)) return;
     const configured = Boolean(replacement || await dependencies.secretStore.readSecret(DEEPSEEK_SECRET_NAME));
-    response.json(repositoryFor(response).saveDeepSeekSettings(parsed.data, configured));
+    if (requestCanContinue(request, response, signal)) response.json(repositoryFor(response).saveDeepSeekSettings(parsed.data, configured));
   }));
 
   router.put("/settings/mail", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const parsed = MailSettingsUpdateSchema.safeParse(request.body);
     if (!parsed.success) return validationError(response);
     const replacement = parsed.data.smtpPassword?.trim();
     if (replacement) await dependencies.secretStore.protectSecret(SMTP_SECRET_NAME, replacement);
+    if (!requestCanContinue(request, response, signal)) return;
     const configured = Boolean(replacement || await dependencies.secretStore.readSecret(SMTP_SECRET_NAME));
-    response.json(repositoryFor(response).saveMailSettings(parsed.data, configured));
+    if (requestCanContinue(request, response, signal)) response.json(repositoryFor(response).saveMailSettings(parsed.data, configured));
   }));
 
-  router.post("/settings/deepseek/test", handle(async (_request, response) => {
+  router.post("/settings/deepseek/test", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const apiKey = await dependencies.secretStore.readSecret(DEEPSEEK_SECRET_NAME);
+    if (!requestCanContinue(request, response, signal)) return;
     const settings: DeepSeekSettings = repositoryFor(response).getDeepSeekSettings(Boolean(apiKey));
     if (!apiKey || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) return notConfigured(response);
     try {
-      await providerTester({ baseUrl: settings.baseUrl, model: settings.model, apiKey, timeoutMs });
-      response.json(result("success"));
+      await providerTester({ baseUrl: settings.baseUrl, model: settings.model, apiKey, timeoutMs, signal });
+      if (requestCanContinue(request, response, signal)) response.json(result("success"));
     } catch (error) {
-      response.json(result(categoryFor(error)));
+      if (requestCanContinue(request, response, signal)) response.json(result(categoryFor(error)));
     }
   }));
 
-  router.post("/settings/mail/test", handle(async (_request, response) => {
+  router.post("/settings/mail/test", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const smtpPassword = await dependencies.secretStore.readSecret(SMTP_SECRET_NAME);
+    if (!requestCanContinue(request, response, signal)) return;
     const settings: MailSettings = repositoryFor(response).getMailSettings(Boolean(smtpPassword));
     if (!smtpPassword || !MailSettingsUpdateSchema.safeParse(settings).success) return notConfigured(response);
     try {
-      await mailTester({ ...settings, smtpPassword, timeoutMs });
-      response.json(result("success"));
+      await mailTester({ ...settings, smtpPassword, timeoutMs, signal });
+      if (requestCanContinue(request, response, signal)) response.json(result("success"));
     } catch (error) {
-      response.json(result(categoryFor(error)));
+      if (requestCanContinue(request, response, signal)) response.json(result(categoryFor(error)));
     }
   }));
 

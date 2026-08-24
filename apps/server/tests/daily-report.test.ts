@@ -78,6 +78,30 @@ describe("daily report prompt", () => {
 });
 
 describe("DeepSeekClient", () => {
+  it("propagates an external request abort into the pending provider fetch", async () => {
+    const controller = new AbortController();
+    let providerSignal: AbortSignal | null | undefined;
+    const client = new DeepSeekClient(vi.fn(async (_url, init) => {
+      providerSignal = init?.signal;
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }));
+    const pending = client.generateDailyReport({
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      apiKey: "provider-key",
+      completed: "完成测试",
+      risks: "",
+      signal: controller.signal
+    });
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ category: "timeout" });
+    expect(providerSignal?.aborted).toBe(true);
+  });
+
   it("uses a 30-second abort timeout, refuses redirects, and owns the authorization header", async () => {
     vi.useFakeTimers();
     let capturedInit: RequestInit | undefined;
@@ -204,7 +228,8 @@ describe("daily report API", () => {
       model: "deepseek-chat",
       apiKey: "request-time-key",
       completed: "完成接口联调",
-      risks: "等待权限开通"
+      risks: "等待权限开通",
+      signal: expect.any(AbortSignal)
     }]);
     expect(response.body).toMatchObject({
       id: 1,

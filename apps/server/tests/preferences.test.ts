@@ -78,6 +78,26 @@ describe("workspace preferences API", () => {
     expect((await request(persistedApp).get("/api/preferences/theme")).body).toEqual({ theme: "dark" });
   });
 
+  it("round trips validated appearance in SQLite and distinguishes an unset legacy value", async () => {
+    const app = createApp({ dataDir: tempDir });
+    const absent = await request(app).get("/api/preferences/appearance");
+    const saved = await request(app).put("/api/preferences/appearance").set("X-LYJ-Workbench-Request", "local-browser-v1").send({
+      skin: "paper", density: "compact", radius: "subtle", glass: false
+    });
+    const persisted = await request(createApp({ dataDir: tempDir })).get("/api/preferences/appearance");
+
+    expect(absent.body).toEqual({ appearance: null });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ skin: "paper", density: "compact", radius: "subtle", glass: false });
+    expect(persisted.body).toEqual({ appearance: saved.body });
+  });
+
+  it("rejects invalid appearance without storing it", async () => {
+    const app = createApp({ dataDir: tempDir });
+    await request(app).put("/api/preferences/appearance").set("X-LYJ-Workbench-Request", "local-browser-v1").send({ skin: "evil", density: "compact", radius: "subtle", glass: false }).expect(400);
+    await request(app).get("/api/preferences/appearance").expect(200, { appearance: null });
+  });
+
   it("normalizes a malicious vault enablement attempt on every navigation save", async () => {
     const response = await request(createApp({ dataDir: tempDir })).put("/api/preferences/navigation").send([
       { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },

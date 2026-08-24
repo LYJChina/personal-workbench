@@ -40,6 +40,30 @@ function renderPage(settingsApi = createApi()) {
 }
 
 describe("SettingsPage", () => {
+  it("shows a non-blocking appearance retry and retries the failed legacy target", async () => {
+    const legacy = { skin: "paper", density: "compact", radius: "subtle", glass: false } as const;
+    localStorage.setItem("workbench.appearance.v1", JSON.stringify(legacy));
+    const appearanceApi = {
+      getAppearance: vi.fn().mockResolvedValue({ appearance: null }),
+      updateAppearance: vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(legacy)
+    };
+    render(
+      <AppearanceProvider api={appearanceApi}>
+        <ThemeProvider initialTheme="light" onSave={vi.fn().mockResolvedValue(undefined)}>
+          <SettingsPage api={createApi()} />
+        </ThemeProvider>
+      </AppearanceProvider>
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("外观偏好尚未保存");
+    expect(screen.getByLabelText(/冰羽蓝/)).toBeChecked();
+    expect(localStorage.getItem("workbench.appearance.v1")).toBe(JSON.stringify(legacy));
+    fireEvent.click(screen.getByRole("button", { name: "重试保存外观" }));
+    await waitFor(() => expect(screen.getByLabelText(/雾林青/)).toBeChecked());
+    expect(appearanceApi.updateAppearance).toHaveBeenLastCalledWith(legacy);
+    expect(localStorage.getItem("workbench.appearance.v1")).toBeNull();
+  });
+
   it("shows configured status without displaying saved secret values", async () => {
     renderPage();
 

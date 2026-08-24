@@ -24,11 +24,6 @@ interface AttemptRow {
   error_category: ReminderFailureCategory | null; recipient: string; subject: string; body: string;
 }
 
-export interface ReminderAttemptState {
-  status: AttemptRow["status"];
-  attemptedAt: Date;
-}
-
 export class GenericReminderRepository {
   public constructor(
     private readonly database: Database.Database,
@@ -136,73 +131,18 @@ export class GenericReminderRepository {
       }));
   }
 
-  public wasDelivered(id: string, scheduledFor: string): boolean {
-    return Boolean(this.database.prepare(`
-      SELECT 1 FROM generic_reminder_attempts WHERE reminder_id = ? AND scheduled_for = ? AND status = 'success'
-    `).get(id, scheduledFor));
-  }
-
-  public attemptFor(id: string, scheduledFor: string): ReminderAttemptState | null {
-    const row = this.database.prepare(`
-      SELECT status, attempted_at FROM generic_reminder_attempts
-      WHERE reminder_id = ? AND scheduled_for = ?
-    `).get(id, scheduledFor) as { status: AttemptRow["status"]; attempted_at: string } | undefined;
-    return row ? { status: row.status, attemptedAt: new Date(row.attempted_at) } : null;
-  }
-
-  public acquireClaim(id: string, scheduledFor: string, token: string, now: Date, expiresAt: Date): boolean {
-    const acquire = this.database.transaction(() => {
-      if (this.wasDelivered(id, scheduledFor)) return false;
-      const result = this.database.prepare(`
-        INSERT INTO generic_reminder_claims (reminder_id, scheduled_for, claim_token, claimed_at, claim_expires_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(reminder_id, scheduled_for) DO UPDATE SET claim_token = excluded.claim_token,
-          claimed_at = excluded.claimed_at, claim_expires_at = excluded.claim_expires_at
-        WHERE generic_reminder_claims.claim_expires_at <= excluded.claimed_at
-      `).run(id, scheduledFor, token, now.toISOString(), expiresAt.toISOString());
-      return result.changes === 1;
-    });
-    return acquire.immediate();
-  }
-
-  public completeSuccess(reminder: GenericReminder, scheduledFor: string, token: string, attemptedAt: Date): boolean {
-    const complete = this.database.transaction(() => {
-      const owned = this.database.prepare(`DELETE FROM generic_reminder_claims
-        WHERE reminder_id = ? AND scheduled_for = ? AND claim_token = ?`).run(reminder.id, scheduledFor, token);
-      if (owned.changes !== 1) return false;
-      this.database.prepare(`
-        INSERT INTO generic_reminder_attempts
-          (reminder_id, reminder_name, scheduled_for, attempted_at, status, error_category, recipient, subject, body)
-        VALUES (?, ?, ?, ?, 'success', NULL, ?, ?, ?)
-        ON CONFLICT(reminder_id, scheduled_for) DO UPDATE SET attempted_at = excluded.attempted_at,
-          status = 'success', error_category = NULL, recipient = excluded.recipient,
-          subject = excluded.subject, body = excluded.body
-      `).run(reminder.id, reminder.name, scheduledFor, attemptedAt.toISOString(), reminder.recipient, reminder.subject, reminder.body);
-      this.database.prepare(`UPDATE generic_reminders SET successful_occurrences = successful_occurrences + 1,
-        updated_at = ? WHERE id = ?`).run(attemptedAt.toISOString(), reminder.id);
-      return true;
-    });
-    return complete.immediate();
-  }
-
-  public completeFailure(
-    reminder: GenericReminder, scheduledFor: string, token: string,
-    category: ReminderFailureCategory, attemptedAt: Date
-  ): boolean {
-    const complete = this.database.transaction(() => {
-      const owned = this.database.prepare(`DELETE FROM generic_reminder_claims
-        WHERE reminder_id = ? AND scheduled_for = ? AND claim_token = ?`).run(reminder.id, scheduledFor, token);
-      if (owned.changes !== 1) return false;
-      this.database.prepare(`
-        INSERT INTO generic_reminder_attempts
-          (reminder_id, reminder_name, scheduled_for, attempted_at, status, error_category, recipient, subject, body)
-        VALUES (?, ?, ?, ?, 'failure', ?, ?, ?, ?)
-        ON CONFLICT(reminder_id, scheduled_for) DO UPDATE SET attempted_at = excluded.attempted_at,
-          status = 'failure', error_category = excluded.error_category
-      `).run(reminder.id, reminder.name, scheduledFor, attemptedAt.toISOString(), category,
-        reminder.recipient, reminder.subject, reminder.body);
-      return true;
-    });
-    return complete.immediate();
+  public recordManualAttempt(
+    reminder: GenericReminder,
+    attemptedAt: Date,
+    outcome: { status: "success" } | { status: "failure"; category: ReminderFailureCategory }
+  ): void {
+    const timestamp = attemptedAt.toISOString();
+    this.database.prepare(`
+      INSERT INTO generic_reminder_attempts
+        (reminder_id, reminder_name, scheduled_for, attempted_at, status, error_category, recipient, subject, body)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(reminder.id, reminder.name, timestamp, timestamp, outcome.status,
+      outcome.status === "failure" ? outcome.category : null,
+      reminder.recipient, reminder.subject, reminder.body);
   }
 }

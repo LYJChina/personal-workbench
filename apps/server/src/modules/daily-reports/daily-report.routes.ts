@@ -7,6 +7,7 @@ import { isAllowedDeepSeekUrl } from "../settings/settings.routes.js";
 import { SettingsRepository } from "../settings/settings.repository.js";
 import { DailyReportRepository } from "./daily-report.repository.js";
 import { DeepSeekClientError, type DailyReportGenerator } from "./deepseek.client.js";
+import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 
 const deepSeekSecretName = "deepseek-api-key";
 
@@ -37,11 +38,11 @@ function providerError(response: Response, error: unknown): void {
 export function createDailyReportRouter(paths: AppPaths, dependencies: DailyReportRouterDependencies): Router {
   const router = Router();
 
-  router.use((_request, response, next) => {
+  router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.dailyReportRepository = new DailyReportRepository(database);
     response.locals.settingsRepository = new SettingsRepository(database);
-    response.once("finish", () => database.close());
+    response.locals.requestSignal = bindRequestLifecycle(request, response, () => database.close());
     next();
   });
 
@@ -51,10 +52,12 @@ export function createDailyReportRouter(paths: AppPaths, dependencies: DailyRepo
     (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);
 
   router.post("/daily-reports/generate", handle(async (request, response) => {
+    const signal = response.locals.requestSignal as AbortSignal;
     const parsed = DailyReportInputSchema.safeParse(request.body);
     if (!parsed.success) return errorResponse(response, 400, "Daily report validation failed", "VALIDATION_ERROR");
 
     const apiKey = await dependencies.secretStore.readSecret(deepSeekSecretName);
+    if (!requestCanContinue(request, response, signal)) return;
     const settings = settingsFor(response).getDeepSeekSettings(Boolean(apiKey));
     if (!apiKey || !settings.model.trim() || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) {
       return errorResponse(response, 409, "请先在设置中配置 DeepSeek", "DEEPSEEK_NOT_CONFIGURED");
@@ -67,20 +70,22 @@ export function createDailyReportRouter(paths: AppPaths, dependencies: DailyRepo
         risks: parsed.data.risks,
         baseUrl: settings.baseUrl,
         model: settings.model,
-        apiKey
+        apiKey,
+        signal
       });
     } catch (error) {
-      providerError(response, error);
+      if (requestCanContinue(request, response, signal)) providerError(response, error);
       return;
     }
 
+    if (!requestCanContinue(request, response, signal)) return;
     let saved: DailyReport;
     try {
       saved = reportsFor(response).create(parsed.data, generated);
     } catch {
       throw new Error("Daily report persistence failed");
     }
-    response.status(201).json(saved);
+    if (requestCanContinue(request, response, signal)) response.status(201).json(saved);
   }));
 
   router.get("/daily-reports", (_request, response) => {

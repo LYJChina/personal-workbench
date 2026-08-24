@@ -1,12 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, request as httpRequest } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { GenericReminderInput } from "@workbench/contracts";
 import { resolveAppPaths } from "../src/config/paths";
 import { openDatabase } from "../src/db/database";
 import { HolidayRepository } from "../src/modules/calendar/holiday.repository";
+import { WORKBENCH_MUTATION_HEADER_NAME, WORKBENCH_MUTATION_HEADER_VALUE } from "@workbench/contracts";
 import { nextOccurrence } from "../src/modules/reminders/reminder.schedule";
 import { createApp } from "../src/app";
 
@@ -90,5 +92,39 @@ describe("holiday-aware reminder schedules", () => {
     const calendar = await request(app).get("/api/calendar?from=2026-10-01&to=2026-10-10");
     expect(calendar.body.coverage[0].year).toBe(2026);
     expect(calendar.body.days).toContainEqual({ localDate: "2026-10-10", dayType: "makeup_workday", name: "国庆节调休" });
+  });
+
+  it("aborts a pending holiday fetch before opening or mutating the calendar database", async () => {
+    let observedSignal: AbortSignal | undefined;
+    let started!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => { started = resolve; });
+    const app = createApp({
+      dataDir: tempDir,
+      holidayYearLoader: async (_year, signal) => {
+        observedSignal = signal;
+        started();
+        return new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }));
+      }
+    });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("test server did not bind");
+    const body = JSON.stringify({ years: [2026] });
+    const aborted = new Promise<void>((resolve) => {
+      const pending = httpRequest({
+        host: "127.0.0.1", port: address.port, path: "/api/calendar/sync", method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), [WORKBENCH_MUTATION_HEADER_NAME]: WORKBENCH_MUTATION_HEADER_VALUE }
+      });
+      pending.on("error", () => resolve());
+      pending.end(body);
+      void fetchStarted.then(() => pending.destroy());
+    });
+    await aborted;
+    expect(observedSignal?.aborted).toBe(true);
+    const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
+    expect(new HolidayRepository(database).coverage()).toEqual([]);
+    database.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 });

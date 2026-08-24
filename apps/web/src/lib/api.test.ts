@@ -21,13 +21,31 @@ describe("backup download client", () => {
 
     const filename = await api.exportDatabase();
 
-    expect(fetch).toHaveBeenCalledWith("/api/backup/export", { method: "POST" });
+    expect(fetch).toHaveBeenCalledWith("/api/backup/export", {
+      method: "POST",
+      headers: { "X-LYJ-Workbench-Request": "local-browser-v1" }
+    });
     expect(filename).toBe("LYJWorkBench-backup-2026-08-23.sqlite");
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(createObjectURL.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ size: expect.any(Number) }));
     expect(click).toHaveBeenCalledTimes(1);
     expect(document.querySelector("a")).toBeNull();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:workbench-backup");
+  });
+
+  it("adds the fixed local-workbench header to every mutation helper", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ theme: "dark" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.updateTheme("dark");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/preferences/theme", expect.objectContaining({
+      method: "PUT",
+      headers: expect.objectContaining({ "X-LYJ-Workbench-Request": "local-browser-v1" })
+    }));
   });
 
   it("falls back from an unsafe filename and still revokes the URL when clicking fails", async () => {

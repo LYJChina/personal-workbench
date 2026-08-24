@@ -17,7 +17,7 @@ function parseGroups(value: unknown): HolidayGroup[] {
   });
 }
 
-export type HolidayYearLoader = (year: number) => Promise<HolidayDay[] | null>;
+export type HolidayYearLoader = (year: number, signal?: AbortSignal) => Promise<HolidayDay[] | null>;
 
 function addDays(localDate: string, count: number): string {
   const [year, month, day] = localDate.split("-").map(Number);
@@ -28,8 +28,11 @@ function addDays(localDate: string, count: number): string {
 export class GithubHolidayClient {
   public constructor(private readonly fetchImpl: typeof fetch = fetch, private readonly timeoutMs = 15_000) {}
 
-  public async fetchYear(year: number): Promise<HolidayDay[] | null> {
+  public async fetchYear(year: number, externalSignal?: AbortSignal): Promise<HolidayDay[] | null> {
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    externalSignal?.addEventListener("abort", abort, { once: true });
+    if (externalSignal?.aborted) controller.abort();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await this.fetchImpl(
@@ -56,6 +59,7 @@ export class GithubHolidayClient {
       return days;
     } finally {
       clearTimeout(timeout);
+      externalSignal?.removeEventListener("abort", abort);
     }
   }
 }

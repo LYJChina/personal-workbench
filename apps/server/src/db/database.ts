@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
@@ -12,6 +12,9 @@ interface LegacyProfilePhotoRow { photo_filename: string | null; photo_blob: Buf
 const maxPhotoBytes = 5 * 1024 * 1024;
 const migrationLockBudgetMs = 5_000;
 const busyRetrySignal = new Int32Array(new SharedArrayBuffer(4));
+export const currentSchemaVersion = 3;
+const futureSchemaError = "Database schema version is newer than supported";
+const invalidRecoveryError = "Database migration recovery snapshot is invalid";
 
 export interface LegacyPhotoFileSystem {
   lstat(path: string): Stats;
@@ -31,6 +34,7 @@ export interface OpenDatabaseOptions {
   loadMigration?: (primaryUrl: URL, fallbackUrl: URL) => string;
   migrateHistory?: (database: Database.Database) => void;
   legacyPhotoFileSystem?: LegacyPhotoFileSystem;
+  afterRecoverySnapshot?: () => void;
 }
 
 function loadMigration(primaryUrl: URL, fallbackUrl: URL): string {
@@ -185,8 +189,7 @@ function migrateProfilePhotosAtomically(database: Database.Database, paths: AppP
   }
 }
 
-function retryBusyMigration(database: Database.Database, operation: () => void): void {
-  const deadline = performance.now() + migrationLockBudgetMs;
+function retryBusyMigration(database: Database.Database, operation: () => void, deadline = performance.now() + migrationLockBudgetMs): void {
   let lastBusyError: unknown;
   while (true) {
     const remainingBeforeAttempt = deadline - performance.now();
@@ -206,24 +209,110 @@ function retryBusyMigration(database: Database.Database, operation: () => void):
   }
 }
 
+function integrityIsOk(path: string): boolean {
+  let validation: Database.Database | undefined;
+  try {
+    validation = new Database(path, { readonly: true, fileMustExist: true });
+    return validation.pragma("integrity_check", { simple: true }) === "ok";
+  } catch {
+    return false;
+  } finally {
+    validation?.close();
+  }
+}
+
+function removeIfPresent(path: string): void {
+  try { unlinkSync(path); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+interface Migration {
+  version: number;
+  run(database: Database.Database, readMigration: (primaryUrl: URL, fallbackUrl: URL) => string, paths: AppPaths, options: OpenDatabaseOptions): void;
+}
+
+const migrations: Migration[] = [
+  {
+    version: 1,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/001_init.sql", import.meta.url),
+      new URL("../../src/db/migrations/001_init.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 2,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/002_generic_reminders.sql", import.meta.url),
+      new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 3,
+    run: (database, _readMigration, paths, options) => {
+      (options.migrateHistory ?? migrateAiPolishHistory)(database);
+      migrateProfilePhotos(database, paths, options.legacyPhotoFileSystem ?? nativeLegacyPhotoFileSystem);
+    }
+  }
+];
+
 export function openDatabase(paths: AppPaths, options: OpenDatabaseOptions = {}): Database.Database {
   mkdirSync(paths.uploadsDir, { recursive: true });
+  const existingDatabase = existsSync(paths.databasePath);
   const database = (options.createDatabase ?? ((databasePath) => new Database(databasePath)))(paths.databasePath);
+  let recoveryPath: string | undefined;
   try {
     database.pragma("foreign_keys = ON");
-    const readMigration = options.loadMigration ?? loadMigration;
+    const deadline = performance.now() + migrationLockBudgetMs;
+    let installedVersion = 0;
     retryBusyMigration(database, () => {
-      database.exec(readMigration(
-        new URL("./migrations/001_init.sql", import.meta.url),
-        new URL("../../src/db/migrations/001_init.sql", import.meta.url)
-      ));
-      database.exec(readMigration(
-        new URL("./migrations/002_generic_reminders.sql", import.meta.url),
-        new URL("../../src/db/migrations/002_generic_reminders.sql", import.meta.url)
-      ));
-      (options.migrateHistory ?? migrateAiPolishHistory)(database);
-      migrateProfilePhotosAtomically(database, paths, options.legacyPhotoFileSystem ?? nativeLegacyPhotoFileSystem);
-    });
+      installedVersion = Number(database.pragma("user_version", { simple: true }));
+    }, deadline);
+    if (installedVersion > currentSchemaVersion) throw new Error(futureSchemaError);
+    if (installedVersion === currentSchemaVersion) {
+      retryBusyMigration(database, () => migrateProfilePhotosAtomically(
+        database, paths, options.legacyPhotoFileSystem ?? nativeLegacyPhotoFileSystem
+      ), deadline);
+      return database;
+    }
+    const readMigration = options.loadMigration ?? loadMigration;
+    if (existingDatabase) {
+      recoveryPath = `${paths.databasePath}.migration-recovery-${process.pid}.sqlite`;
+      if (!existsSync(recoveryPath)) {
+        retryBusyMigration(database, () => {
+          database.exec(`VACUUM INTO '${recoveryPath!.replaceAll("'", "''")}'`);
+        }, deadline);
+      }
+      if (!integrityIsOk(recoveryPath)) throw new Error(invalidRecoveryError);
+      options.afterRecoverySnapshot?.();
+    }
+    retryBusyMigration(database, () => {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        let version = Number(database.pragma("user_version", { simple: true }));
+        if (version > currentSchemaVersion) throw new Error(futureSchemaError);
+        for (const migration of migrations) {
+          if (migration.version <= version) continue;
+          const savepoint = `migration_v${migration.version}`;
+          database.exec(`SAVEPOINT ${savepoint}`);
+          try {
+            migration.run(database, readMigration, paths, options);
+            database.pragma(`user_version = ${migration.version}`);
+            database.exec(`RELEASE ${savepoint}`);
+            version = migration.version;
+          } catch (error) {
+            database.exec(`ROLLBACK TO ${savepoint}`);
+            database.exec(`RELEASE ${savepoint}`);
+            throw error;
+          }
+        }
+        database.exec("COMMIT");
+      } catch (error) {
+        try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
+        throw error;
+      }
+    }, deadline);
+    if (recoveryPath) removeIfPresent(recoveryPath);
     return database;
   } catch (error) {
     try {

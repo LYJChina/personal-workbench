@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { WindowsDpapiSecretStore } from "../../platform/legacy-windows-dpapi.js";
 import type { SecretStore } from "../../platform/secret-store.js";
@@ -10,7 +10,18 @@ export interface LegacySecretImporter {
 }
 
 export function detectLegacyWindowsSecrets(secretsDir: string, platform: NodeJS.Platform): boolean {
-  return platform === "win32" && legacySecretNames.some((name) => existsSync(join(secretsDir, `${name}.bin`)));
+  if (platform !== "win32") return false;
+  try {
+    const before = lstatSync(secretsDir);
+    if (!before.isDirectory() || before.isSymbolicLink()) return false;
+    const canonical = realpathSync(secretsDir);
+    const detected = legacySecretNames.some((name) => existsSync(join(secretsDir, `${name}.bin`)));
+    const after = lstatSync(secretsDir);
+    return detected && after.isDirectory() && !after.isSymbolicLink()
+      && before.dev === after.dev && before.ino === after.ino && realpathSync(secretsDir) === canonical;
+  } catch {
+    return false;
+  }
 }
 
 export function createLegacyWindowsSecretImporter(

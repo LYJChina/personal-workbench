@@ -1,15 +1,27 @@
 import { spawn } from "node:child_process";
-import { lstat, open } from "node:fs/promises";
-import type { Stats } from "node:fs";
-import { join } from "node:path";
+import { lstat, open, realpath } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import type { SecretStore } from "./secret-store.js";
 
 const allowedSecretNames = new Set(["deepseek-api-key", "smtp-password", "dpapi-test-secret"]);
+const maxProtectedSecretBytes = 1024 * 1024;
+const maxPlaintextSecretBytes = 64 * 1024;
 
 export interface WindowsDpapiSecretStoreOptions {
   failurePoint?: "after_existing_target_hardened" | "before_final_target_acl";
   platform?: NodeJS.Platform;
+  fileSystem?: DpapiFileSystem;
+  runPowerShell?: typeof runPowerShell;
 }
+
+export interface DpapiFileSystem {
+  lstat(path: string): Promise<Stats>;
+  realpath(path: string): Promise<string>;
+  open(path: string, flags: string | number): ReturnType<typeof open>;
+}
+
+const nativeFileSystem: DpapiFileSystem = { lstat, realpath, open };
 
 const protectScript = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -152,6 +164,22 @@ function sameFile(before: Stats, after: Stats): boolean {
   return before.dev === after.dev && before.ino === after.ino;
 }
 
+async function readProtectedBytesBounded(handle: Awaited<ReturnType<typeof open>>): Promise<Buffer> {
+  const bounded = Buffer.allocUnsafe(maxProtectedSecretBytes + 1);
+  let total = 0;
+  try {
+    while (total < bounded.length) {
+      const { bytesRead } = await handle.read(bounded, total, bounded.length - total, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+    }
+    if (total < 1 || total > maxProtectedSecretBytes) throw new Error("Windows DPAPI operation failed");
+    return Buffer.from(bounded.subarray(0, total));
+  } finally {
+    bounded.fill(0);
+  }
+}
+
 async function runPowerShell(platform: NodeJS.Platform, script: string, standardInput?: Buffer, environment: Record<string, string> = {}): Promise<Buffer> {
   requireWindows(platform);
   const scriptBytes = Buffer.from(script, "utf16le");
@@ -165,6 +193,7 @@ async function runPowerShell(platform: NodeJS.Platform, script: string, standard
       windowsHide: true
     });
     const output: Buffer[] = [];
+    let outputBytes = 0;
     let settled = false;
     const clearOutput = () => {
       for (const chunk of output) chunk.fill(0);
@@ -185,7 +214,14 @@ async function runPowerShell(platform: NodeJS.Platform, script: string, standard
     };
     child.stdout.on("data", (chunk: Buffer) => {
       if (settled) chunk.fill(0);
-      else output.push(chunk);
+      else if (outputBytes + chunk.length > maxPlaintextSecretBytes) {
+        chunk.fill(0);
+        child.kill();
+        fail();
+      } else {
+        outputBytes += chunk.length;
+        output.push(chunk);
+      }
     });
     child.stdout.once("error", fail);
     child.stderr.resume();
@@ -229,25 +265,48 @@ export class WindowsDpapiSecretStore implements SecretStore {
   public async readSecret(name: string): Promise<string | null> {
     validateSecretName(name);
     requireWindows(this.platform);
+    const filesystem = this.options.fileSystem ?? nativeFileSystem;
+    const executePowerShell = this.options.runPowerShell ?? runPowerShell;
+    let rootBefore: Stats;
+    let canonicalRoot: string;
+    try {
+      rootBefore = await filesystem.lstat(this.secretsDir);
+      if (!rootBefore.isDirectory() || rootBefore.isSymbolicLink()) throw new Error();
+      canonicalRoot = await filesystem.realpath(this.secretsDir);
+    } catch {
+      throw new Error("Windows DPAPI operation failed");
+    }
     const path = join(this.secretsDir, `${name}.bin`);
+    if (resolve(path) !== path || !resolve(path).startsWith(`${resolve(this.secretsDir)}${sep}`)) throw new Error("Windows DPAPI operation failed");
     let before: Stats;
     try {
-      before = await lstat(path);
+      before = await filesystem.lstat(path);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw new Error("Windows DPAPI operation failed");
     }
     if (!before.isFile() || before.isSymbolicLink()) throw new Error("Windows DPAPI operation failed");
+    try {
+      if (!(await filesystem.realpath(path)).startsWith(`${canonicalRoot}${sep}`)) throw new Error();
+    } catch {
+      throw new Error("Windows DPAPI operation failed");
+    }
 
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     let protectedBytes: Buffer | undefined;
     try {
-      handle = await open(path, "r");
+      handle = await filesystem.open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       const opened = await handle.stat();
-      if (!opened.isFile() || !sameFile(before, opened)) throw new Error("Windows DPAPI operation failed");
-      protectedBytes = await handle.readFile();
-      const bytes = await runPowerShell(this.platform, readScript, protectedBytes);
+      if (!opened.isFile() || !sameFile(before, opened) || opened.size < 1 || opened.size > maxProtectedSecretBytes) throw new Error("Windows DPAPI operation failed");
+      protectedBytes = await readProtectedBytesBounded(handle);
+      const rootAfter = await filesystem.lstat(this.secretsDir);
+      const candidateAfter = await filesystem.lstat(path);
+      if (!rootAfter.isDirectory() || rootAfter.isSymbolicLink() || !sameFile(rootBefore, rootAfter)
+        || await filesystem.realpath(this.secretsDir) !== canonicalRoot || candidateAfter.isSymbolicLink()
+        || !sameFile(opened, candidateAfter)) throw new Error("Windows DPAPI operation failed");
+      const bytes = await executePowerShell(this.platform, readScript, protectedBytes);
       try {
+        if (bytes.length > maxPlaintextSecretBytes) throw new Error("Windows DPAPI operation failed");
         return bytes.toString("utf8");
       } finally {
         bytes.fill(0);

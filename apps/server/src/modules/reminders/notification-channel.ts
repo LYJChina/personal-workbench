@@ -11,5 +11,5 @@ export type DeliveryResult =
   | { status: "failure"; category: ReminderFailureCategory };
 
 export interface NotificationChannel {
-  send(message: NotificationMessage): Promise<DeliveryResult>;
+  send(message: NotificationMessage, signal?: AbortSignal): Promise<DeliveryResult>;
 }
