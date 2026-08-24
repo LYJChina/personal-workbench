@@ -98,12 +98,17 @@ describe("holiday-aware reminder schedules", () => {
     let observedSignal: AbortSignal | undefined;
     let started!: () => void;
     const fetchStarted = new Promise<void>((resolve) => { started = resolve; });
+    let signalAborted!: () => void;
+    const abortObserved = new Promise<void>((resolve) => { signalAborted = resolve; });
     const app = createApp({
       dataDir: tempDir,
       holidayYearLoader: async (_year, signal) => {
         observedSignal = signal;
         started();
-        return new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }));
+        return new Promise((_resolve, reject) => signal?.addEventListener("abort", () => {
+          signalAborted();
+          reject(new DOMException("aborted", "AbortError"));
+        }, { once: true }));
       }
     });
     const server = createServer(app);
@@ -121,6 +126,7 @@ describe("holiday-aware reminder schedules", () => {
       void fetchStarted.then(() => pending.destroy());
     });
     await aborted;
+    await abortObserved;
     expect(observedSignal?.aborted).toBe(true);
     const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
     expect(new HolidayRepository(database).coverage()).toEqual([]);
