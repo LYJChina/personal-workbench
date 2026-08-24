@@ -88,4 +88,10 @@ pnpm test
 pnpm build
 ```
 
-The full test command covers the cross-platform launcher, security boundaries, vault and API behavior, one-time legacy import, database/profile migrations, and online backup export.
+The full test command covers the cross-platform launcher, security boundaries, vault and API behavior, one-time legacy import logic, database/profile migrations, and online backup export. Machine-bound Windows DPAPI and ACL integration is intentionally excluded from hosted CI because it depends on a stable interactive Windows user profile. Run it explicitly on a local Windows account when validating legacy import:
+
+```powershell
+$env:LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION = "1"
+pnpm --filter @workbench/server exec vitest --configLoader runner run tests/dpapi.test.ts --maxWorkers=1 --fileParallelism=false
+Remove-Item Env:LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION
+```

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WindowsDpapiSecretStore } from "../src/platform/legacy-windows-dpapi";
 
 const runWindowsIntegration = process.platform === "win32"
-  && (process.env.GITHUB_ACTIONS !== "true" || process.env.LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION === "1");
+  && process.env.LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION === "1";
 const describeOnWindows = runWindowsIntegration ? describe : describe.skip;
 const execFileAsync = promisify(execFile);
 

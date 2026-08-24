@@ -43,11 +43,5 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Run Windows DPAPI integration tests
-        if: runner.os == 'Windows'
-        env:
-          LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION: "1"
-        run: pnpm --filter @workbench/server exec vitest --configLoader runner run tests/dpapi.test.ts --maxWorkers=1 --fileParallelism=false
-
       - name: Build
         run: pnpm build
