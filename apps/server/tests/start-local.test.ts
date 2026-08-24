@@ -500,7 +500,6 @@ describe("cross-platform local launcher", () => {
       server.listen(Number(process.env.PORT), process.env.HOST);
       if (process.connected) process.once("disconnect", () => process.exit(0));
     `);
-    const moduleUrl = pathToFileURL(resolve(process.cwd(), "../../scripts/start-local.mjs")).href;
     const options = {
       port,
       openBrowser: false,
@@ -513,20 +512,19 @@ describe("cross-platform local launcher", () => {
       platform: process.platform,
       instanceToken: "collision-owned-token"
     };
-    const harness = spawn(process.execPath, [
-      "--input-type=module",
-      "--eval",
-      `const { runLocalLauncher } = await import(${JSON.stringify(moduleUrl)}); await runLocalLauncher(${JSON.stringify(options)}).catch(() => process.exit(1));`
-    ], { stdio: "ignore", windowsHide: true });
+    const launchResult = runLocalLauncher(options).then(
+      (value: unknown) => ({ value, error: null }),
+      (error: unknown) => ({ value: null, error })
+    );
     let collisionPid = 0;
 
     try {
       collisionPid = Number(await waitForFile(pidFile));
-      const exitCode = await new Promise<number | null>((resolveExit) => harness.once("exit", resolveExit));
-      expect(exitCode).toBe(1);
+      const outcome = await launchResult;
+      expect(outcome.value).toBeNull();
+      expect(outcome.error).toBeInstanceOf(Error);
       expect(processExists(collisionPid)).toBe(false);
     } finally {
-      if (processExists(harness.pid!)) harness.kill("SIGKILL");
       if (collisionPid && processExists(collisionPid)) process.kill(collisionPid, "SIGKILL");
       await new Promise<void>((resolveClose) => incumbent.close(() => resolveClose()));
       await rm(fixtureRoot, { recursive: true, force: true });

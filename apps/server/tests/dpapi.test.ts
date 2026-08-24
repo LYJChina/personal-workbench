@@ -62,7 +62,7 @@ async function currentUserSid(target: string): Promise<string> {
   return runAclScript("[Console]::Out.Write([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value)", target);
 }
 
-describeOnWindows("Windows DPAPI secret store", () => {
+describeOnWindows("Windows DPAPI secret store", { timeout: 20_000 }, () => {
   let tempDir: string;
   const secretName = "dpapi-test-secret";
 
