@@ -60,7 +60,7 @@ function includes<T extends readonly string[]>(values: T, value: unknown): value
 }
 
 export class PluginRepository {
-  public constructor(private readonly database: Database.Database) {}
+  public constructor(private readonly database: Database.Database | (() => Database.Database)) {}
 
   public reconcileSystemPlugins(manifests: unknown[]): void {
     const parsed = manifests.map((manifest) => PluginManifestSchema.parse(manifest));
@@ -71,8 +71,8 @@ export class PluginRepository {
       pluginIds.add(manifest.id);
     }
 
-    this.database.transaction((systemManifests: PluginManifest[]) => {
-      const upsertPlugin = this.database.prepare(`
+    this.withDatabase((database) => database.transaction((systemManifests: PluginManifest[]) => {
+      const upsertPlugin = database.prepare(`
         INSERT INTO installed_plugins
           (plugin_id, manifest_json, version, kind, enabled, required, runtime_status, last_error_code)
         VALUES (?, ?, ?, 'system', 1, 0, 'stopped', NULL)
@@ -82,7 +82,7 @@ export class PluginRepository {
           kind = excluded.kind,
           updated_at = CURRENT_TIMESTAMP
       `);
-      const upsertPermission = this.database.prepare(`
+      const upsertPermission = database.prepare(`
         INSERT INTO plugin_permissions (plugin_id, permission, granted)
         VALUES (?, ?, 1)
         ON CONFLICT(plugin_id, permission) DO UPDATE SET granted = 1, updated_at = CURRENT_TIMESTAMP
@@ -91,78 +91,86 @@ export class PluginRepository {
       for (const manifest of systemManifests) {
         upsertPlugin.run(manifest.id, JSON.stringify(manifest), manifest.version);
         if (manifest.permissions.length === 0) {
-          this.database.prepare("DELETE FROM plugin_permissions WHERE plugin_id = ?").run(manifest.id);
+          database.prepare("DELETE FROM plugin_permissions WHERE plugin_id = ?").run(manifest.id);
         } else {
           const placeholders = manifest.permissions.map(() => "?").join(", ");
-          this.database.prepare(`DELETE FROM plugin_permissions WHERE plugin_id = ? AND permission NOT IN (${placeholders})`)
+          database.prepare(`DELETE FROM plugin_permissions WHERE plugin_id = ? AND permission NOT IN (${placeholders})`)
             .run(manifest.id, ...manifest.permissions);
           for (const permission of manifest.permissions) upsertPermission.run(manifest.id, permission);
         }
       }
 
       if (systemManifests.length === 0) {
-        this.database.prepare("UPDATE installed_plugins SET runtime_status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE kind = 'system'").run();
+        database.prepare("UPDATE installed_plugins SET runtime_status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE kind = 'system'").run();
       } else {
         const placeholders = systemManifests.map(() => "?").join(", ");
-        this.database.prepare(`UPDATE installed_plugins SET runtime_status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE kind = 'system' AND plugin_id NOT IN (${placeholders})`)
+        database.prepare(`UPDATE installed_plugins SET runtime_status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE kind = 'system' AND plugin_id NOT IN (${placeholders})`)
           .run(...systemManifests.map((manifest) => manifest.id));
       }
-    })(parsed);
+    })(parsed));
   }
 
   public list(): PluginSummary[] {
-    const rows = this.database.prepare(`
-      SELECT plugin_id, manifest_json, enabled, required, runtime_status, last_error_code
-      FROM installed_plugins
-      ORDER BY plugin_id
-    `).all() as PluginRow[];
+    return this.withDatabase((database) => {
+      const rows = database.prepare(`
+        SELECT plugin_id, manifest_json, enabled, required, runtime_status, last_error_code
+        FROM installed_plugins
+        ORDER BY plugin_id
+      `).all() as PluginRow[];
 
-    try {
-      const permissionsForPlugin = this.database.prepare("SELECT permission FROM plugin_permissions WHERE plugin_id = ? AND granted = 1 ORDER BY permission");
-      return rows.map((row) => {
-        const manifest = PluginManifestSchema.parse(JSON.parse(row.manifest_json));
-        const permissionsGranted = (permissionsForPlugin.all(row.plugin_id) as PermissionRow[]).map((permission) => permission.permission as PluginPermission);
-        return PluginSummarySchema.parse({
-          manifest,
-          enabled: Boolean(row.enabled),
-          required: Boolean(row.required),
-          runtimeStatus: row.runtime_status,
-          permissionsGranted,
-          errorCode: row.last_error_code
+      try {
+        const permissionsForPlugin = database.prepare("SELECT permission FROM plugin_permissions WHERE plugin_id = ? AND granted = 1 ORDER BY permission");
+        return rows.map((row) => {
+          const manifest = PluginManifestSchema.parse(JSON.parse(row.manifest_json));
+          const permissionsGranted = (permissionsForPlugin.all(row.plugin_id) as PermissionRow[]).map((permission) => permission.permission as PluginPermission);
+          return PluginSummarySchema.parse({
+            manifest,
+            enabled: Boolean(row.enabled),
+            required: Boolean(row.required),
+            runtimeStatus: row.runtime_status,
+            permissionsGranted,
+            errorCode: row.last_error_code
+          });
         });
-      });
-    } catch {
-      throw new Error(corruptStoredPluginManifestError);
-    }
+      } catch {
+        throw new Error(corruptStoredPluginManifestError);
+      }
+    });
   }
 
   public setEnabled(id: string, enabled: boolean): void {
-    const row = this.database.prepare("SELECT required FROM installed_plugins WHERE plugin_id = ?").get(id) as { required: number } | undefined;
-    if (!row) throw new Error("Plugin not found");
-    if (row.required && !enabled) throw new Error(requiredPluginDisableError);
-    this.database.prepare("UPDATE installed_plugins SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE plugin_id = ?").run(Number(enabled), id);
+    this.withDatabase((database) => {
+      const row = database.prepare("SELECT required FROM installed_plugins WHERE plugin_id = ?").get(id) as { required: number } | undefined;
+      if (!row) throw new Error("Plugin not found");
+      if (row.required && !enabled) throw new Error(requiredPluginDisableError);
+      database.prepare("UPDATE installed_plugins SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE plugin_id = ?").run(Number(enabled), id);
+    });
   }
 
   public isPermissionGranted(id: string, permission: PluginPermission): boolean {
     if (!PluginIdSchema.safeParse(id).success || !PluginPermissionSchema.safeParse(permission).success) return false;
-    const granted = this.database.prepare(`
-      SELECT granted
-      FROM plugin_permissions
-      WHERE plugin_id = ? AND permission = ?
-    `).pluck().get(id, permission);
-    return granted === 1;
+    return this.withDatabase((database) => {
+      const granted = database.prepare(`
+        SELECT granted
+        FROM plugin_permissions
+        WHERE plugin_id = ? AND permission = ?
+      `).pluck().get(id, permission);
+      return granted === 1;
+    });
   }
 
   public setRuntimeStatus(id: string, status: PluginRuntimeStatus, errorCode: PluginErrorCode = null): void {
     const pluginId = PluginIdSchema.parse(id);
     const runtimeStatus = PluginRuntimeStatusSchema.parse(status);
     const sanitizedErrorCode = errorCode === "PLUGIN_START_FAILED" ? errorCode : null;
-    const result = this.database.prepare(`
-      UPDATE installed_plugins
-      SET runtime_status = ?, last_error_code = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE plugin_id = ?
-    `).run(runtimeStatus, sanitizedErrorCode, pluginId);
-    if (result.changes === 0) throw new Error("Plugin not found");
+    this.withDatabase((database) => {
+      const result = database.prepare(`
+        UPDATE installed_plugins
+        SET runtime_status = ?, last_error_code = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE plugin_id = ?
+      `).run(runtimeStatus, sanitizedErrorCode, pluginId);
+      if (result.changes === 0) throw new Error("Plugin not found");
+    });
   }
 
   public recordAudit(event: PluginAuditEvent): void {
@@ -173,33 +181,43 @@ export class PluginRepository {
     const action = accepted ? event.action : "PLUGIN_AUDIT_EVENT_REJECTED";
     const status = includes(auditStatuses, event.status) ? event.status : "denied";
     const errorCode = accepted ? event.errorCode ?? null : "PLUGIN_AUDIT_ERROR";
-    this.database.prepare("INSERT INTO plugin_audit_events (plugin_id, action, status, error_code) VALUES (?, ?, ?, ?)")
-      .run(trustedPluginId, action, status, errorCode);
+    this.withDatabase((database) => {
+      database.prepare("INSERT INTO plugin_audit_events (plugin_id, action, status, error_code) VALUES (?, ?, ?, ?)")
+        .run(trustedPluginId, action, status, errorCode);
+    });
   }
 
   public beginStartup(): PluginStartupState {
-    return this.database.transaction(() => {
-      const previous = this.getStartupState();
+    return this.withDatabase((database) => database.transaction(() => {
+      const previous = this.getStartupStateFrom(database);
       const consecutiveFailedStartups = previous.incomplete
         ? previous.consecutiveFailedStartups + 1
         : previous.consecutiveFailedStartups;
       const safeMode = previous.safeMode || consecutiveFailedStartups >= 3;
-      this.setRuntimeState("startup", "starting");
-      this.setRuntimeState("consecutive_failed_startups", String(consecutiveFailedStartups));
-      this.setRuntimeState("safe_mode", safeMode ? "1" : "0");
+      this.setRuntimeState(database, "startup", "starting");
+      this.setRuntimeState(database, "consecutive_failed_startups", String(consecutiveFailedStartups));
+      this.setRuntimeState(database, "safe_mode", safeMode ? "1" : "0");
       return { incomplete: true, consecutiveFailedStartups, safeMode };
-    })();
+    })());
   }
 
   public completeStartup(): void {
-    this.database.transaction(() => {
-      this.setRuntimeState("startup", "complete");
-      this.setRuntimeState("consecutive_failed_startups", "0");
-    })();
+    this.withDatabase((database) => database.transaction(() => {
+      this.setRuntimeState(database, "startup", "complete");
+      this.setRuntimeState(database, "consecutive_failed_startups", "0");
+    })());
   }
 
   public getStartupState(): PluginStartupState {
-    const stateRows = this.database.prepare(`
+    return this.withDatabase((database) => this.getStartupStateFrom(database));
+  }
+
+  public resetSafeMode(): void {
+    this.withDatabase((database) => this.setRuntimeState(database, "safe_mode", "0"));
+  }
+
+  private getStartupStateFrom(database: Database.Database): PluginStartupState {
+    const stateRows = database.prepare(`
       SELECT key, value
       FROM plugin_runtime_state
       WHERE key IN ('startup', 'consecutive_failed_startups', 'safe_mode')
@@ -213,14 +231,20 @@ export class PluginRepository {
     };
   }
 
-  public resetSafeMode(): void {
-    this.setRuntimeState("safe_mode", "0");
-  }
-
-  private setRuntimeState(key: string, value: string): void {
-    this.database.prepare(`
+  private setRuntimeState(database: Database.Database, key: string, value: string): void {
+    database.prepare(`
       INSERT INTO plugin_runtime_state (key, value) VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
     `).run(key, value);
+  }
+
+  private withDatabase<T>(operation: (database: Database.Database) => T): T {
+    if (typeof this.database !== "function") return operation(this.database);
+    const database = this.database();
+    try {
+      return operation(database);
+    } finally {
+      database.close();
+    }
   }
 }

@@ -183,6 +183,21 @@ describe("production-local security boundaries", () => {
     expect(createSnapshot).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["PUT", "/api/plugins/lyj.system.ai-chat/enabled", { enabled: false }],
+    ["POST", "/api/plugins/safe-mode/reset", undefined]
+  ])("requires mutation provenance for plugin management %s %s", async (method, path, body) => {
+    const app = createApp({ dataDir: tempDir, secretStore: new EmptySecretStore() });
+    const pending = method === "PUT" ? request(app).put(path) : request(app).post(path);
+    pending.set("Host", "127.0.0.1:3001").set(mutationHeaderName, "missing");
+    if (body !== undefined) pending.send(body);
+
+    const response = await pending;
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: { message: "Forbidden", code: "FORBIDDEN" } });
+  });
+
   it("accepts a valid Vite origin and mutation provenance", async () => {
     const send = vi.fn().mockResolvedValue({ status: "success" as const });
     const app = createApp({

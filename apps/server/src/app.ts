@@ -1,7 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { HealthResponseSchema } from "@workbench/contracts";
 import { resolveAppPaths } from "./config/paths.js";
-import { openDatabase } from "./db/database.js";
+import { openDatabase, openOperationalDatabase } from "./db/database.js";
 import { createProfileRouter, isPhotoUploadLimitError } from "./modules/profile/profile.routes.js";
 import { createPreferencesRouter } from "./modules/preferences/preferences.routes.js";
 import { createDailyReportRouter } from "./modules/daily-reports/daily-report.routes.js";
@@ -28,6 +28,17 @@ import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
 import { BackupService, type BackupExporter } from "./modules/backup/backup.service.js";
 import { createBackupRouter, type BackupReadStreamFactory } from "./modules/backup/backup.routes.js";
 import { enforceLocalRequestBoundary } from "./security/request-boundary.js";
+import { PluginRepository } from "./modules/plugins/plugin.repository.js";
+import { ContributionRegistry } from "./kernel/contribution-registry.js";
+import { PermissionGate } from "./kernel/permissions.js";
+import { PluginLifecycle, type SystemPluginDefinition } from "./kernel/plugin-lifecycle.js";
+import { compiledSystemPluginManifests } from "./system-plugins/manifests.js";
+import { createPluginRouter } from "./modules/plugins/plugin.routes.js";
+import {
+  createPluginRouteGuard,
+  createPluginStartupReadiness,
+  type PluginRouteOwnership
+} from "./kernel/plugin-route-guard.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -49,6 +60,7 @@ export interface CreateAppOptions {
   webDistDir?: string;
   instanceToken?: string;
   profileDatabaseOpener?: typeof openDatabase;
+  pluginDatabaseInitializer?: typeof openDatabase;
   backupNow?: () => Date;
   backupTempRoot?: string;
   backupExporter?: BackupExporter;
@@ -58,6 +70,29 @@ export interface CreateAppOptions {
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   const paths = resolveAppPaths(options);
+  const initializedPluginDatabase = (options.pluginDatabaseInitializer ?? openDatabase)(paths);
+  try {
+    new PluginRepository(initializedPluginDatabase)
+      .reconcileSystemPlugins([...compiledSystemPluginManifests]);
+  } finally {
+    initializedPluginDatabase.close();
+  }
+  const pluginRepository = new PluginRepository(() => openOperationalDatabase(paths));
+  const contributionRegistry = new ContributionRegistry();
+  const permissionGate = new PermissionGate(pluginRepository);
+  const pluginDefinitions: SystemPluginDefinition[] = compiledSystemPluginManifests.map((manifest) => ({
+    manifest,
+    start: () => undefined
+  }));
+  const pluginLifecycle = new PluginLifecycle({
+    definitions: pluginDefinitions,
+    repository: pluginRepository,
+    registry: contributionRegistry,
+    permissions: permissionGate
+  });
+  const pluginStartup = createPluginStartupReadiness(pluginLifecycle.startAll());
+  const pluginGuard = (pluginId: string, ownership: readonly PluginRouteOwnership[]) =>
+    createPluginRouteGuard({ pluginId, ownership, lifecycle: pluginLifecycle, readiness: pluginStartup });
   const vault = new VaultService(createVaultRepositoryProvider(paths), { scrypt: options.vaultScrypt });
   const platform = options.platform ?? process.platform;
   let legacySecretImporter: LegacySecretImporter | undefined;
@@ -94,27 +129,44 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   app.use("/api", createProfileRouter(paths, { openDatabase: options.profileDatabaseOpener }));
   app.use("/api", createPreferencesRouter(paths));
-  app.use("/api", createDailyReportRouter(paths, {
+  app.use("/api", createPluginRouter({
+    lifecycle: pluginLifecycle,
+    registry: contributionRegistry,
+    readiness: pluginStartup
+  }));
+  app.use("/api", pluginGuard("lyj.system.daily-reports", [
+    { path: "/daily-reports", descendants: true }
+  ]), createDailyReportRouter(paths, {
     secretStore,
     deepSeekClient,
     allowLoopbackHttp: options.allowLoopbackHttp
   }));
-  app.use("/api", createAiPolishRouter(paths, {
+  app.use("/api", pluginGuard("lyj.system.ai-polish", [
+    { path: "/ai-polish", descendants: true }
+  ]), createAiPolishRouter(paths, {
     secretStore,
     generator: aiPolishClient,
     allowLoopbackHttp: options.allowLoopbackHttp
   }));
-  app.use("/api", createAiChatRouter(paths, {
+  app.use("/api", pluginGuard("lyj.system.ai-chat", [
+    { path: "/ai-chat", descendants: true }
+  ]), createAiChatRouter(paths, {
     secretStore,
     generator: aiChatClient,
     allowLoopbackHttp: options.allowLoopbackHttp
   }));
-  app.use("/api", createReminderRouter(paths, {
+  app.use("/api", pluginGuard("lyj.system.reminders", [
+    { path: "/reminders", descendants: true },
+    { path: "/reminder-attempts", descendants: true },
+    { path: "/dashboard/upcoming-reminders", descendants: false }
+  ]), createReminderRouter(paths, {
     secretStore,
     channel: options.reminderChannel,
     now: options.now
   }));
-  app.use("/api", createHolidayRouter(paths, {
+  app.use("/api", pluginGuard("lyj.system.workday-calendar", [
+    { path: "/calendar", descendants: true }
+  ]), createHolidayRouter(paths, {
     loader: options.holidayYearLoader,
     now: options.now
   }));

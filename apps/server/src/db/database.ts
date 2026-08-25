@@ -330,3 +330,18 @@ export function openDatabase(paths: AppPaths, options: OpenDatabaseOptions = {})
     throw error;
   }
 }
+
+export function openOperationalDatabase(paths: AppPaths): Database.Database {
+  const database = new Database(paths.databasePath);
+  try {
+    database.pragma("foreign_keys = ON");
+    return database;
+  } catch (error) {
+    try {
+      database.close();
+    } catch {
+      // Preserve the connection failure.
+    }
+    throw error;
+  }
+}
