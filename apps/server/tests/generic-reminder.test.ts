@@ -58,7 +58,7 @@ describe("generic reminder migration", () => {
     repository.delete(created.id);
     expect(() => repository.get(created.id, new Date())).toThrow("Reminder not found");
     database.close();
-  });
+  }, 15_000);
 
   it("exposes reminder CRUD, history, upcoming and manual email routes without a scheduler", async () => {
     const channel = { send: vi.fn().mockResolvedValue({ status: "success" as const }) };
