@@ -4,6 +4,7 @@ import { resolveAppPaths } from "./config/paths.js";
 import { openDatabase, openOperationalDatabase } from "./db/database.js";
 import { createProfileRouter, isPhotoUploadLimitError } from "./modules/profile/profile.routes.js";
 import { createPreferencesRouter } from "./modules/preferences/preferences.routes.js";
+import { PreferencesRepository } from "./modules/preferences/preferences.repository.js";
 import { createDailyReportRouter } from "./modules/daily-reports/daily-report.routes.js";
 import { DeepSeekClient, type DailyReportGenerator } from "./modules/daily-reports/deepseek.client.js";
 import { createSettingsRouter, type DeepSeekConnectionTester, type MailConnectionTester } from "./modules/settings/settings.routes.js";
@@ -72,6 +73,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const paths = resolveAppPaths(options);
   const initializedPluginDatabase = (options.pluginDatabaseInitializer ?? openDatabase)(paths);
   try {
+    new PreferencesRepository(initializedPluginDatabase).initializeDefaults();
     new PluginRepository(initializedPluginDatabase)
       .reconcileSystemPlugins([...compiledSystemPluginManifests]);
   } finally {

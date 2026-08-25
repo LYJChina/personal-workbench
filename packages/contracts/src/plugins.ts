@@ -15,7 +15,7 @@ export const PluginPermissionSchema = z.enum([
   "mail:send"
 ]);
 
-const ContributionIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const ContributionIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
 const ContributionPathSchema = z.string().regex(/^\/[a-z0-9/-]*$/);
 const ComponentTokenSchema = z.string().regex(/^system\.[a-z0-9.-]+$/);
 

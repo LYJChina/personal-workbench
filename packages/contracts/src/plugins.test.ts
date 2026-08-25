@@ -87,6 +87,7 @@ describe("PluginManifestSchema", () => {
 
   it.each([
     ["path traversal-like route paths", { contributions: [{ type: "route", id: "bad-route", path: "/../secrets", component: "system.secrets.page" }] }],
+    ["contribution IDs longer than 100 characters", { contributions: [{ type: "navigation", id: "a".repeat(101), label: "Long", path: "/long", icon: "grid", position: 1 }] }],
     ["invalid semantic versions", { version: "1.0.0-beta" }],
     ["unknown permissions", { permissions: ["filesystem:read"] }],
     ["noncanonical plugin IDs", { id: "lyj.system.Reminders" }],

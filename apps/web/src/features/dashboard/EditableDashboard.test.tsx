@@ -7,6 +7,7 @@ import { SidebarEditor } from "./SidebarEditor";
 import { EditableDashboard } from "./EditableDashboard";
 import { Sidebar } from "../../app/Sidebar";
 import { ThemeProvider, useTheme } from "../../app/ThemeProvider";
+import { ContributionProvider, usePluginContributions } from "../../plugins/ContributionProvider";
 
 const profileLayout: DashboardLayout[] = [{ moduleId: "profile", x: 0, y: 0, w: 4, h: 4, enabled: true }];
 
@@ -95,6 +96,51 @@ describe("EditableDashboard", () => {
 
     expect(onSave).toHaveBeenCalledWith(desktopLayout);
   });
+
+  it("renders and saves an installed dashboard contribution with a generalized stable ID", async () => {
+    const pluginLayout: DashboardLayout[] = [{
+      moduleId: "analytics-card" as DashboardLayout["moduleId"],
+      x: 7,
+      y: 3,
+      w: 6,
+      h: 8,
+      enabled: true
+    }];
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const path = String(input);
+      if (path === "/api/plugins/contributions") {
+        return new Response(JSON.stringify([{
+          pluginId: "lyj.plugin.analytics",
+          contribution: {
+            type: "dashboard",
+            id: "analytics-card",
+            title: "Analytics",
+            component: "system.ai-chat.dashboard",
+            minW: 3,
+            minH: 4
+          }
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/ai-chat/messages") {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ error: { message: "Unexpected request", code: "NOT_FOUND" } }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ContributionProvider>
+        <EditableDashboard initialLayout={pluginLayout} onSave={onSave} />
+      </ContributionProvider>
+    );
+
+    expect(await screen.findByRole("region", { name: "大模型对话" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "编辑工作台" }));
+    await user.click(screen.getByRole("button", { name: "完成编辑" }));
+    expect(onSave).toHaveBeenCalledWith(pluginLayout);
+  });
 });
 
 describe("SidebarEditor", () => {
@@ -117,6 +163,103 @@ describe("SidebarEditor", () => {
 
     expect(screen.getByText("密码保险箱")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("即将推出")).toBeVisible();
+  });
+
+  it("preserves an inactive sparse row exactly and restores its position after re-enable", async () => {
+    const user = userEvent.setup();
+    const sparseNavigation: NavigationItem[] = navigation.map((item) => item.id === "reminders"
+      ? { ...item, position: 100, visible: false }
+      : item);
+    let contributionsEnabled = false;
+    const savedPayloads: NavigationItem[][] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/plugins/contributions") {
+        return new Response(JSON.stringify(contributionsEnabled ? [{
+          pluginId: "lyj.system.reminders",
+          contribution: {
+            type: "navigation",
+            id: "reminders",
+            label: "提醒事项",
+            path: "/reminders",
+            icon: "bell",
+            position: 2
+          }
+        }] : []), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/preferences/navigation" && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body)) as NavigationItem[];
+        savedPayloads.push(payload);
+        return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    function Shell() {
+      const contributions = usePluginContributions();
+      return <>
+        <Sidebar initialItems={sparseNavigation} />
+        <button type="button" onClick={() => void contributions.refresh()}>刷新贡献</button>
+      </>;
+    }
+
+    render(<MemoryRouter><ContributionProvider><Shell /></ContributionProvider></MemoryRouter>);
+    await screen.findByRole("button", { name: "刷新贡献" });
+    await user.click(screen.getByRole("button", { name: "编辑导航" }));
+    await user.click(screen.getByRole("button", { name: "保存导航" }));
+
+    expect(savedPayloads[0]?.find((item) => item.id === "reminders")).toEqual(sparseNavigation[2]);
+
+    contributionsEnabled = true;
+    await user.click(screen.getByRole("button", { name: "刷新贡献" }));
+    await user.click(await screen.findByRole("button", { name: "编辑导航" }));
+    await user.click(screen.getByRole("button", { name: "恢复 提醒事项" }));
+    await user.click(screen.getByRole("button", { name: "保存导航" }));
+
+    expect(savedPayloads[1]?.find((item) => item.id === "reminders")).toMatchObject({ position: 100, visible: true });
+
+    await user.click(screen.getByRole("button", { name: "编辑导航" }));
+    await user.click(screen.getByRole("button", { name: "上移 提醒事项" }));
+    await user.click(screen.getByRole("button", { name: "保存导航" }));
+
+    expect(savedPayloads[2]?.find((item) => item.id === "reminders")).toMatchObject({ position: 4, visible: true });
+    expect(savedPayloads[2]?.find((item) => item.id === "settings")).toMatchObject({ position: 100 });
+  });
+
+  it("allocates a collision-free position only for a genuinely new navigation entry", async () => {
+    const user = userEvent.setup();
+    const savedPayloads: NavigationItem[][] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/plugins/contributions") {
+        return new Response(JSON.stringify([{
+          pluginId: "lyj.plugin.new-navigation",
+          contribution: {
+            type: "navigation",
+            id: "new-page",
+            label: "New",
+            path: "/new",
+            icon: "grid",
+            position: 2
+          }
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path === "/api/preferences/navigation" && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body)) as NavigationItem[];
+        savedPayloads.push(payload);
+        return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    render(<MemoryRouter><ContributionProvider><Sidebar initialItems={navigation} /></ContributionProvider></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "New" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "编辑导航" }));
+    await user.click(screen.getByRole("button", { name: "保存导航" }));
+
+    expect(savedPayloads[0]?.find((item) => item.id === "reminders")).toEqual(navigation[2]);
+    expect(savedPayloads[0]?.find((item) => item.id === "new-page")).toMatchObject({ position: 5 });
   });
 });
 

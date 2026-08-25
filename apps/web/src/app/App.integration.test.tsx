@@ -8,8 +8,9 @@ const navigation = [
   { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },
   { id: "ai-office", label: "AI 办公", path: "/ai-office", position: 1, visible: true, disabled: false },
   { id: "reminders", label: "提醒事项", path: "/reminders", position: 2, visible: true, disabled: false },
-  { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 3, visible: true, disabled: false },
-  { id: "settings", label: "设置", path: "/settings", position: 4, visible: true, disabled: false }
+  { id: "team-reminders", label: "团队提醒", path: "/reminders", position: 3, visible: true, disabled: false },
+  { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 4, visible: true, disabled: false },
+  { id: "settings", label: "设置", path: "/settings", position: 5, visible: true, disabled: false }
 ];
 
 const layout = [
@@ -45,6 +46,13 @@ const contributions = [
     contribution: {
       type: "navigation", id: "reminders", label: "提醒事项",
       path: "/reminders", icon: "bell", position: 20
+    }
+  },
+  {
+    pluginId: "lyj.plugin.team-reminders",
+    contribution: {
+      type: "navigation", id: "team-reminders", label: "团队提醒",
+      path: "/reminders", icon: "bell", position: 30
     }
   },
   {
@@ -107,6 +115,7 @@ describe("complete application navigation", () => {
     expect(await screen.findByRole("region", { name: "工作台" })).toBeVisible();
     expect(screen.getByRole("region", { name: "大模型对话" })).toBeVisible();
     expect(await screen.findByText("随时问我一个问题")).toBeVisible();
+    expect(screen.getByRole("link", { name: "团队提醒" })).toBeVisible();
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "false");
     await user.click(screen.getByRole("button", { name: "编辑工作台" }));
     expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "true");

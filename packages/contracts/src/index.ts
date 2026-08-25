@@ -51,7 +51,9 @@ export const ProfileUpdateSchema = ProfileSchema.pick({
   employeeNumber: z.string().trim().min(1).max(100)
 });
 
-export const ModuleIdSchema = z.enum(["profile", "workday-calendar", "upcoming-reminders", "ai-chat"]);
+export const PreferenceContributionIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
+
+export const ModuleIdSchema = PreferenceContributionIdSchema;
 
 export const DashboardLayoutSchema = z.object({
   moduleId: ModuleIdSchema,
@@ -62,7 +64,7 @@ export const DashboardLayoutSchema = z.object({
   enabled: z.boolean()
 });
 
-export const NavigationIdSchema = z.enum(["home", "ai-office", "reminders", "vault-coming-soon", "settings"]);
+export const NavigationIdSchema = PreferenceContributionIdSchema;
 
 export const NavigationItemSchema = z.object({
   id: NavigationIdSchema,

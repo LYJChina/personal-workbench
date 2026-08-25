@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { AppearanceSettingsSchema, type AppearanceSettings, type DashboardLayout, type NavigationItem, type Theme } from "@workbench/contracts";
+import { AppearanceSettingsSchema, PluginManifestSchema, type AppearanceSettings, type DashboardLayout, type NavigationItem, type Theme } from "@workbench/contracts";
 
 const defaultLayout: DashboardLayout[] = [
   { moduleId: "profile", x: 0, y: 0, w: 4, h: 5, enabled: true },
@@ -15,6 +15,18 @@ const defaultNavigation: NavigationItem[] = [
   { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 3, visible: true, disabled: true },
   { id: "settings", label: "设置", path: "/settings", position: 4, visible: true, disabled: false }
 ];
+
+const coreDashboardIds = new Set(["profile"]);
+const coreNavigation = new Map(defaultNavigation
+  .filter((item) => item.id !== "reminders")
+  .map((item) => [item.id, item]));
+
+export class PreferencesValidationError extends Error {
+  public constructor() {
+    super("Preferences validation failed");
+    this.name = "PreferencesValidationError";
+  }
+}
 
 interface LayoutRow {
   module_id: DashboardLayout["moduleId"];
@@ -35,7 +47,9 @@ interface NavigationRow {
 }
 
 export class PreferencesRepository {
-  public constructor(private readonly database: Database.Database) {
+  public constructor(private readonly database: Database.Database) {}
+
+  public initializeDefaults(): void {
     this.seed();
   }
 
@@ -46,8 +60,21 @@ export class PreferencesRepository {
 
   public saveLayout(layout: DashboardLayout[]): DashboardLayout[] {
     const save = this.database.transaction((items: DashboardLayout[]) => {
-      this.database.prepare("DELETE FROM dashboard_layouts").run();
-      const insert = this.database.prepare("INSERT INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)");
+      const allowed = this.installedPreferenceContributionIds().dashboard;
+      for (const item of items) {
+        if (!allowed.has(item.moduleId)) throw new PreferencesValidationError();
+      }
+      const insert = this.database.prepare(`
+        INSERT INTO dashboard_layouts (module_id, x, y, w, h, enabled) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(module_id) DO UPDATE SET
+          x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h,
+          enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP
+        WHERE dashboard_layouts.x IS NOT excluded.x
+          OR dashboard_layouts.y IS NOT excluded.y
+          OR dashboard_layouts.w IS NOT excluded.w
+          OR dashboard_layouts.h IS NOT excluded.h
+          OR dashboard_layouts.enabled IS NOT excluded.enabled
+      `);
       items.forEach((item) => insert.run(item.moduleId, item.x, item.y, item.w, item.h, Number(item.enabled)));
     });
     save(layout);
@@ -60,13 +87,43 @@ export class PreferencesRepository {
   }
 
   public saveNavigation(navigation: NavigationItem[]): NavigationItem[] {
-    const normalized = navigation.map((item) => item.id === "vault-coming-soon" ? { ...item, disabled: true } : item);
     const save = this.database.transaction((items: NavigationItem[]) => {
-      this.database.prepare("DELETE FROM navigation_items").run();
-      const insert = this.database.prepare("INSERT INTO navigation_items (id, label, path, position, visible, disabled) VALUES (?, ?, ?, ?, ?, ?)");
+      const allowed = this.installedPreferenceContributionIds().navigation;
+      for (const item of items) {
+        if (!allowed.has(item.id)) throw new PreferencesValidationError();
+      }
+      for (const [id, identity] of coreNavigation) {
+        const item = items.find((candidate) => candidate.id === id);
+        if (!item || item.label !== identity.label || item.path !== identity.path || item.disabled !== identity.disabled) {
+          throw new PreferencesValidationError();
+        }
+      }
+      const submittedIds = new Set(items.map((item) => item.id));
+      const positions = new Set<number>();
+      for (const item of items) {
+        if (positions.has(item.position)) throw new PreferencesValidationError();
+        positions.add(item.position);
+      }
+      const retained = this.database.prepare("SELECT id, position FROM navigation_items").all() as Array<{ id: string; position: number }>;
+      for (const item of retained) {
+        if (submittedIds.has(item.id)) continue;
+        if (positions.has(item.position)) throw new PreferencesValidationError();
+        positions.add(item.position);
+      }
+      const insert = this.database.prepare(`
+        INSERT INTO navigation_items (id, label, path, position, visible, disabled) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          label = excluded.label, path = excluded.path, position = excluded.position,
+          visible = excluded.visible, disabled = excluded.disabled, updated_at = CURRENT_TIMESTAMP
+        WHERE navigation_items.label IS NOT excluded.label
+          OR navigation_items.path IS NOT excluded.path
+          OR navigation_items.position IS NOT excluded.position
+          OR navigation_items.visible IS NOT excluded.visible
+          OR navigation_items.disabled IS NOT excluded.disabled
+      `);
       items.forEach((item) => insert.run(item.id, item.label, item.path, item.position, Number(item.visible), Number(item.disabled)));
     });
-    save(normalized);
+    save(navigation);
     return this.getNavigation();
   }
 
@@ -128,5 +185,26 @@ export class PreferencesRepository {
       this.database.prepare("UPDATE navigation_items SET disabled = 1 WHERE id = 'vault-coming-soon'").run();
     });
     seed();
+  }
+
+  private installedPreferenceContributionIds(): { dashboard: Set<string>; navigation: Set<string> } {
+    const dashboard = new Set(coreDashboardIds);
+    const navigation = new Set(coreNavigation.keys());
+    const rows = this.database.prepare("SELECT plugin_id, manifest_json FROM installed_plugins ORDER BY plugin_id")
+      .all() as Array<{ plugin_id: string; manifest_json: string }>;
+    for (const row of rows) {
+      let manifest;
+      try {
+        manifest = PluginManifestSchema.parse(JSON.parse(row.manifest_json));
+      } catch {
+        throw new PreferencesValidationError();
+      }
+      if (manifest.id !== row.plugin_id) throw new PreferencesValidationError();
+      for (const contribution of manifest.contributions) {
+        if (contribution.type === "dashboard") dashboard.add(contribution.id);
+        if (contribution.type === "navigation") navigation.add(contribution.id);
+      }
+    }
+    return { dashboard, navigation };
   }
 }

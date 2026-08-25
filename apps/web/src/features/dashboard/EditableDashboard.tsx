@@ -100,6 +100,7 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
           cols={columns}
           rowHeight={72}
           layout={toGridLayout(layout, registry, columns)}
+          compactType={null}
           isDraggable={editing}
           isResizable={editing}
           onLayoutChange={updateLayout}

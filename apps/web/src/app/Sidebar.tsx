@@ -64,13 +64,24 @@ export function Sidebar({ initialItems }: SidebarProps) {
   async function save(itemsToSave: NavigationItem[]) {
     const active = [...itemsToSave].sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
     const activeIds = new Set(active.map((item) => item.id));
-    const queue = [...active];
-    const payload = [...preferences]
-      .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id))
-      .map((item) => activeIds.has(item.id) ? queue.shift()! : item);
-    payload.push(...queue);
-    const normalized = payload.map((item, position) => ({ ...item, position }));
-    setPreferences(await api.updateNavigation(normalized));
+    const storedById = new Map(preferences.map((item) => [item.id, item]));
+    const activePositionSlots = preferences
+      .filter((item) => activeIds.has(item.id))
+      .map((item) => item.position)
+      .sort((left, right) => left - right);
+    const occupiedPositions = new Set(preferences.map((item) => item.position));
+    let activeSlot = 0;
+    const mergedActive = active.map((item) => {
+      if (storedById.has(item.id)) return { ...item, position: activePositionSlots[activeSlot++]! };
+      let position = item.position;
+      while (occupiedPositions.has(position)) position += 1;
+      occupiedPositions.add(position);
+      return { ...item, position };
+    });
+    const inactive = preferences.filter((item) => !activeIds.has(item.id));
+    const payload = [...inactive, ...mergedActive]
+      .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
+    setPreferences(await api.updateNavigation(payload));
   }
 
   if (editing) return <aside className="sidebar sidebar-editing"><SidebarEditor initialItems={items} onSave={save} onClose={() => setEditing(false)} /></aside>;
