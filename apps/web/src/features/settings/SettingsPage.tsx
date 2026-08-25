@@ -11,8 +11,9 @@ import { useTheme } from "../../app/ThemeProvider";
 import { api as defaultApi } from "../../lib/api";
 import { Icon } from "../../app/Icon";
 import { useAppearance, type WorkbenchSkin } from "../../app/AppearanceProvider";
+import { PluginManager, type PluginManagerApi } from "../plugins/PluginManager";
 
-export interface SettingsApi {
+export interface SettingsApi extends PluginManagerApi {
   getSettings(): Promise<SettingsResponse>;
   updateDeepSeekSettings(settings: DeepSeekSettingsUpdate): Promise<DeepSeekSettings>;
   updateMailSettings(settings: MailSettingsUpdate): Promise<MailSettings>;
@@ -171,6 +172,8 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
           {mailTest && mailTest.status !== "pending" && <p role="status">{mailTest.message}</p>}
         </form>
       </section>
+
+      <PluginManager api={settingsApi} />
 
       <section aria-labelledby="backup-heading">
         <div className="settings-section-heading"><div className="card-icon"><Icon name="file" /></div><div><h3 id="backup-heading">备份与迁移</h3><p>导出一份完整且可验证的本地数据库快照</p></div></div>

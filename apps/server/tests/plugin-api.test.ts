@@ -333,7 +333,7 @@ describe("compiled system plugin API", () => {
       .expect(200, { reached: "descendant" });
   });
 
-  it("disables only owned paths, removes contributions, and leaves core and lookalike paths usable", async () => {
+  it("disables and re-enables each plugin while leaving core and lookalike paths usable", async () => {
     const app = createApp({ dataDir });
     const ownership = [
       ["lyj.system.ai-chat", ["/api/ai-chat/messages"]],
@@ -374,6 +374,59 @@ describe("compiled system plugin API", () => {
     await request(app).get("/api/dashboard/upcoming-reminders/extra").expect(404, {
       error: { message: "Not Found", code: "NOT_FOUND" }
     });
+
+    for (const pluginId of pluginIds) {
+      const toggled = await request(app)
+        .put(`/api/plugins/${pluginId}/enabled`)
+        .send({ enabled: true })
+        .expect(200);
+      expect(toggled.body).toMatchObject({
+        manifest: { id: pluginId }, enabled: true, runtimeStatus: "running"
+      });
+      const contributions = await request(app).get("/api/plugins/contributions").expect(200);
+      expect(contributions.body).toEqual(expect.arrayContaining([
+        expect.objectContaining({ pluginId })
+      ]));
+    }
+
+    await request(app).get("/api/health").expect(200, { status: "ok" });
+    await request(app).get("/api/plugins/contributions").expect(200, expectedContributions);
+  });
+
+  it("isolates one failed compiled plugin while core and the other system plugins load", async () => {
+    const dependencySecret = "smtp-password=must-not-leak";
+    const app = createApp({
+      dataDir,
+      systemPluginStartOverrides: {
+        "lyj.system.ai-polish": () => { throw new Error(dependencySecret); }
+      }
+    });
+
+    await request(app).get("/api/health").expect(200, { status: "ok" });
+    const plugins = await request(app).get("/api/plugins").expect(200);
+    expect(plugins.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        manifest: expect.objectContaining({ id: "lyj.system.ai-polish" }),
+        enabled: true,
+        runtimeStatus: "failed",
+        errorCode: "PLUGIN_START_FAILED"
+      })
+    ]));
+    expect(plugins.body.filter((summary: { manifest: { id: string } }) =>
+      summary.manifest.id !== "lyj.system.ai-polish"
+    ).every((summary: { runtimeStatus: string }) => summary.runtimeStatus === "running")).toBe(true);
+    expect(JSON.stringify(plugins.body)).not.toContain(dependencySecret);
+
+    const contributions = await request(app).get("/api/plugins/contributions").expect(200);
+    expect(contributions.body).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ pluginId: "lyj.system.ai-polish" })
+    ]));
+    expect(contributions.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pluginId: "lyj.system.daily-reports" }),
+      expect.objectContaining({ pluginId: "lyj.system.reminders" })
+    ]));
+    await request(app).get("/api/daily-reports").expect(200);
+    await request(app).get("/api/ai-polish").expect(404, disabledBody);
   });
 
   it("retains reminder business data across disable and restores contributions and API access on re-enable", async () => {

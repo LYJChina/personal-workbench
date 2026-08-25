@@ -48,6 +48,50 @@ describe("backup download client", () => {
     }));
   });
 
+  it("calls the plugin management endpoints with abort signals and mutation provenance", async () => {
+    const plugin = {
+      manifest: {
+        manifestVersion: 1,
+        id: "lyj.system.ai-chat",
+        name: "大模型对话",
+        version: "1.0.0",
+        author: "LYJ Workbench",
+        kind: "system",
+        platforms: ["win32", "darwin"],
+        permissions: ["ai:use"],
+        contributions: []
+      },
+      enabled: true,
+      required: false,
+      runtimeStatus: "running",
+      permissionsGranted: ["ai:use"],
+      errorCode: null
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([plugin]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...plugin, enabled: false }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([plugin]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await api.getPlugins(controller.signal);
+    await api.setPluginEnabled("lyj.system.ai-chat", false, controller.signal);
+    await api.resetPluginSafeMode(controller.signal);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/plugins", { signal: controller.signal });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/plugins/lyj.system.ai-chat/enabled", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-LYJ-Workbench-Request": "local-browser-v1" },
+      body: JSON.stringify({ enabled: false }),
+      signal: controller.signal
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/plugins/safe-mode/reset", {
+      method: "POST",
+      headers: { "X-LYJ-Workbench-Request": "local-browser-v1" },
+      signal: controller.signal
+    });
+  });
+
   it("falls back from an unsafe filename and still revokes the URL when clicking fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Blob(["sqlite"]), {
       status: 200,

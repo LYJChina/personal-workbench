@@ -24,6 +24,7 @@ import type {
   GenericReminderInput,
   GenericReminderAttempt,
   HolidayDay,
+  PluginSummary,
   SettingsResponse,
   Theme,
   VaultStatus
@@ -103,6 +104,23 @@ async function exportDatabase(): Promise<string> {
 
 export const api = {
   exportDatabase,
+  getPlugins: (signal?: AbortSignal) => requestJson<PluginSummary[]>(
+    "/plugins",
+    signal ? { signal } : undefined
+  ),
+  setPluginEnabled: (id: string, enabled: boolean, signal?: AbortSignal) => requestJson<PluginSummary>(
+    `/plugins/${encodeURIComponent(id)}/enabled`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+      ...(signal ? { signal } : {})
+    }
+  ),
+  resetPluginSafeMode: (signal?: AbortSignal) => requestJson<PluginSummary[]>(
+    "/plugins/safe-mode/reset",
+    { method: "POST", ...(signal ? { signal } : {}) }
+  ),
   getPluginContributions: (signal?: AbortSignal) => requestJson<unknown>(
     "/plugins/contributions",
     signal ? { signal } : undefined

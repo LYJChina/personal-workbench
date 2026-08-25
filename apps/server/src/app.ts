@@ -62,6 +62,7 @@ export interface CreateAppOptions {
   instanceToken?: string;
   profileDatabaseOpener?: typeof openDatabase;
   pluginDatabaseInitializer?: typeof openDatabase;
+  systemPluginStartOverrides?: Readonly<Record<string, SystemPluginDefinition["start"] | undefined>>;
   backupNow?: () => Date;
   backupTempRoot?: string;
   backupExporter?: BackupExporter;
@@ -84,7 +85,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const permissionGate = new PermissionGate(pluginRepository);
   const pluginDefinitions: SystemPluginDefinition[] = compiledSystemPluginManifests.map((manifest) => ({
     manifest,
-    start: () => undefined
+    start: options.systemPluginStartOverrides?.[manifest.id] ?? (() => undefined)
   }));
   const pluginLifecycle = new PluginLifecycle({
     definitions: pluginDefinitions,

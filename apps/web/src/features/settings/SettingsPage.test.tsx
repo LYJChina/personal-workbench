@@ -24,7 +24,10 @@ function createApi(): SettingsApi {
     updateMailSettings: vi.fn().mockImplementation(async (input) => ({ ...input, smtpPasswordConfigured: Boolean(input.smtpPassword) || true })),
     testDeepSeekConnection: vi.fn().mockResolvedValue({ status: "success", message: "连接成功" }),
     testMailConnection: vi.fn().mockResolvedValue({ status: "success", message: "连接成功" }),
-    exportDatabase: vi.fn().mockResolvedValue("LYJWorkBench-backup-2026-08-23.sqlite")
+    exportDatabase: vi.fn().mockResolvedValue("LYJWorkBench-backup-2026-08-23.sqlite"),
+    getPlugins: vi.fn().mockResolvedValue([]),
+    setPluginEnabled: vi.fn(),
+    resetPluginSafeMode: vi.fn().mockResolvedValue([])
   };
 }
 
@@ -40,6 +43,22 @@ function renderPage(settingsApi = createApi()) {
 }
 
 describe("SettingsPage", () => {
+  it("keeps core settings usable while plugin management loads or fails", async () => {
+    const settingsApi = createApi();
+    const pluginFailure = new Error("raw plugin database failure");
+    Object.assign(settingsApi, {
+      getPlugins: vi.fn().mockRejectedValue(pluginFailure),
+      setPluginEnabled: vi.fn(),
+      resetPluginSafeMode: vi.fn()
+    });
+    renderPage(settingsApi);
+
+    expect(await screen.findByRole("heading", { name: "DeepSeek" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存 DeepSeek 设置" })).toBeEnabled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("系统插件暂时无法读取。其他设置仍可正常使用。");
+    expect(document.body).not.toHaveTextContent("raw plugin database failure");
+  });
+
   it("shows a non-blocking appearance retry and retries the failed legacy target", async () => {
     const legacy = { skin: "paper", density: "compact", radius: "subtle", glass: false } as const;
     localStorage.setItem("workbench.appearance.v1", JSON.stringify(legacy));
