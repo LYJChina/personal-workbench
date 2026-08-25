@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DashboardLayout, NavigationItem } from "@workbench/contracts";
 import { SidebarEditor } from "./SidebarEditor";
-import { EditableDashboard } from "./EditableDashboard";
+import { EditableDashboard, mergeDashboardLayout } from "./EditableDashboard";
 import { Sidebar } from "../../app/Sidebar";
 import { ThemeProvider, useTheme } from "../../app/ThemeProvider";
 import { ContributionProvider, usePluginContributions } from "../../plugins/ContributionProvider";
@@ -22,6 +22,16 @@ const navigation: NavigationItem[] = [
 afterEach(() => vi.unstubAllGlobals());
 
 describe("EditableDashboard", () => {
+  it("assigns a default layout only to a newly enabled contribution", () => {
+    const merged = mergeDashboardLayout(profileLayout, {
+      profile: { id: "profile", title: "个人信息", minW: 4, minH: 5, render: () => null },
+      "analytics-card": { id: "analytics-card" as DashboardLayout["moduleId"], title: "Analytics", minW: 3, minH: 4, render: () => null }
+    }, ["analytics-card" as DashboardLayout["moduleId"]]);
+
+    expect(merged).toEqual(expect.arrayContaining([expect.objectContaining({ moduleId: "analytics-card", enabled: true, w: 4, h: 4 })]));
+    expect(merged.find((item) => item.moduleId === "profile")).toEqual(profileLayout[0]);
+  });
+
   it("shows only a compact daily quote in the dashboard header", () => {
     render(<EditableDashboard initialLayout={profileLayout} onSave={vi.fn()} now={new Date(2026, 7, 18)} />);
 

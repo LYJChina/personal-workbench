@@ -19,6 +19,7 @@ export interface PluginManagerApi {
 interface PluginManagerProps {
   api?: PluginManagerApi;
   refreshContributions?: () => Promise<void>;
+  kind?: "system" | "third-party";
 }
 
 const listError = "系统插件暂时无法读取。其他设置仍可正常使用。";
@@ -74,7 +75,7 @@ function replacePlugin(items: PluginSummary[], replacement: PluginSummary): Plug
   return items.map((item) => item.manifest.id === replacement.manifest.id ? replacement : item);
 }
 
-export function PluginManager({ api = defaultApi, refreshContributions: refreshOverride }: PluginManagerProps) {
+export function PluginManager({ api = defaultApi, refreshContributions: refreshOverride, kind = "system" }: PluginManagerProps) {
   const contributions = usePluginContributions();
   const refreshContributions = refreshOverride ?? contributions.refresh;
   const [plugins, setPlugins] = useState<PluginSummary[]>([]);
@@ -100,7 +101,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
     try {
       const loaded = await api.getPlugins(controller.signal);
       if (mounted.current && listGeneration.current === generation) {
-        setPlugins(loaded.filter((plugin) => plugin.manifest.kind === "system"));
+        setPlugins(loaded.filter((plugin) => plugin.manifest.kind === kind));
       }
     } catch {
       if (mounted.current && listGeneration.current === generation && !controller.signal.aborted) {
@@ -110,7 +111,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
       if (mounted.current && listGeneration.current === generation) setLoading(false);
       if (listController.current === controller) listController.current = null;
     }
-  }, [api]);
+  }, [api, kind]);
 
   useEffect(() => {
     mounted.current = true;
@@ -175,7 +176,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
     try {
       const restored = await api.resetPluginSafeMode(controller.signal);
       if (!mounted.current || mutationGeneration.current !== generation) return;
-      setPlugins(restored.filter((plugin) => plugin.manifest.kind === "system"));
+      setPlugins(restored.filter((plugin) => plugin.manifest.kind === kind));
       await refreshContributions();
       if (!mounted.current || mutationGeneration.current !== generation) return;
       await loadPlugins();
@@ -200,7 +201,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
     <section className="plugin-manager" aria-labelledby="system-plugins-heading" aria-busy={loading || mutationPending}>
       <div className="settings-section-heading">
         <div className="card-icon"><Icon name="grid" /></div>
-        <div><h3 id="system-plugins-heading">系统插件</h3><p>管理工作台自带功能。停用后，对应入口和卡片会暂时隐藏。</p></div>
+        <div><h3 id={`${kind}-plugins-heading`}>{kind === "system" ? "系统插件" : "第三方插件"}</h3><p>{kind === "system" ? "管理工作台自带功能。停用后，对应入口和卡片会暂时隐藏。" : "管理已安装的扩展功能。停用后，对应入口和卡片会暂时隐藏。"}</p></div>
       </div>
 
       {safeMode && (
