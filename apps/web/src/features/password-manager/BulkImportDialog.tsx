@@ -1,0 +1,4 @@
+import { useState } from "react";
+import type { PasswordManagerImportPreview } from "@workbench/contracts";
+import { parseLocalImport } from "./importParser";
+export function BulkImportDialog({ onImport, onClose }: { onImport(items: PasswordManagerImportPreview["items"]): void; onClose(): void }) { const [text, setText] = useState(""); const [preview, setPreview] = useState<PasswordManagerImportPreview | null>(null); return <div role="dialog" aria-label="导入凭据"><label>导入文本<textarea value={text} onChange={(e) => setText(e.target.value)} /></label><button type="button" onClick={() => setPreview(parseLocalImport(text))}>预览导入</button>{preview && <><ul>{preview.items.map((item, index) => <li key={index}>{item.name}</li>)}</ul>{preview.warnings.map((warning) => <p role="alert" key={warning}>{warning}</p>)}<button type="button" onClick={() => onImport(preview.items)}>确认导入 {preview.items.length} 条</button></>}<button type="button" onClick={onClose}>取消</button></div>; }

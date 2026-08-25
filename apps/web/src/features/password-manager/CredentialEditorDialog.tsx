@@ -1,0 +1,6 @@
+import { useState } from "react";
+import type { PasswordManagerEntryInput, PasswordManagerEntrySummary } from "@workbench/contracts";
+export function CredentialEditorDialog({ entry, onSave, onClose }: { entry?: PasswordManagerEntrySummary; onSave(input: PasswordManagerEntryInput): void; onClose(): void }) {
+  const [form, setForm] = useState({ name: entry?.name ?? "", website: entry?.website ?? "", username: entry?.username ?? "", password: "", notes: entry?.notes ?? "" });
+  return <div role="dialog" aria-label="凭据编辑"><form onSubmit={(event) => { event.preventDefault(); if (form.name && form.username && form.password) onSave(form); }}><label>名称<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label>网站<input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} /></label><label>用户名<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></label><label>密码<input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label><label>备注<textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label><button type="submit">保存凭据</button><button type="button" onClick={onClose}>取消</button></form></div>;
+}
