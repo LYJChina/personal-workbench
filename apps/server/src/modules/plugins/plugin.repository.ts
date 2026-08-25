@@ -2,10 +2,14 @@ import type Database from "better-sqlite3";
 import {
   PluginIdSchema,
   PluginManifestSchema,
+  PluginPermissionSchema,
+  PluginRuntimeStatusSchema,
   PluginSummarySchema,
   type PluginId,
+  type PluginErrorCode,
   type PluginManifest,
   type PluginPermission,
+  type PluginRuntimeStatus,
   type PluginSummary
 } from "@workbench/contracts";
 
@@ -43,6 +47,12 @@ interface PluginRow {
 
 interface PermissionRow {
   permission: string;
+}
+
+export interface PluginStartupState {
+  incomplete: boolean;
+  consecutiveFailedStartups: number;
+  safeMode: boolean;
 }
 
 function includes<T extends readonly string[]>(values: T, value: unknown): value is T[number] {
@@ -133,6 +143,28 @@ export class PluginRepository {
     this.database.prepare("UPDATE installed_plugins SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE plugin_id = ?").run(Number(enabled), id);
   }
 
+  public isPermissionGranted(id: string, permission: PluginPermission): boolean {
+    if (!PluginIdSchema.safeParse(id).success || !PluginPermissionSchema.safeParse(permission).success) return false;
+    const granted = this.database.prepare(`
+      SELECT granted
+      FROM plugin_permissions
+      WHERE plugin_id = ? AND permission = ?
+    `).pluck().get(id, permission);
+    return granted === 1;
+  }
+
+  public setRuntimeStatus(id: string, status: PluginRuntimeStatus, errorCode: PluginErrorCode = null): void {
+    const pluginId = PluginIdSchema.parse(id);
+    const runtimeStatus = PluginRuntimeStatusSchema.parse(status);
+    const sanitizedErrorCode = errorCode === "PLUGIN_START_FAILED" ? errorCode : null;
+    const result = this.database.prepare(`
+      UPDATE installed_plugins
+      SET runtime_status = ?, last_error_code = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE plugin_id = ?
+    `).run(runtimeStatus, sanitizedErrorCode, pluginId);
+    if (result.changes === 0) throw new Error("Plugin not found");
+  }
+
   public recordAudit(event: PluginAuditEvent): void {
     const trustedPluginId = PluginIdSchema.safeParse(event.pluginId).success ? event.pluginId ?? null : null;
     const accepted = includes(auditActions, event.action)
@@ -145,18 +177,50 @@ export class PluginRepository {
       .run(trustedPluginId, action, status, errorCode);
   }
 
-  public beginStartup(): void {
-    this.setStartupState("starting");
+  public beginStartup(): PluginStartupState {
+    return this.database.transaction(() => {
+      const previous = this.getStartupState();
+      const consecutiveFailedStartups = previous.incomplete
+        ? previous.consecutiveFailedStartups + 1
+        : previous.consecutiveFailedStartups;
+      const safeMode = previous.safeMode || consecutiveFailedStartups >= 3;
+      this.setRuntimeState("startup", "starting");
+      this.setRuntimeState("consecutive_failed_startups", String(consecutiveFailedStartups));
+      this.setRuntimeState("safe_mode", safeMode ? "1" : "0");
+      return { incomplete: true, consecutiveFailedStartups, safeMode };
+    })();
   }
 
   public completeStartup(): void {
-    this.setStartupState("complete");
+    this.database.transaction(() => {
+      this.setRuntimeState("startup", "complete");
+      this.setRuntimeState("consecutive_failed_startups", "0");
+    })();
   }
 
-  private setStartupState(value: "starting" | "complete"): void {
+  public getStartupState(): PluginStartupState {
+    const stateRows = this.database.prepare(`
+      SELECT key, value
+      FROM plugin_runtime_state
+      WHERE key IN ('startup', 'consecutive_failed_startups', 'safe_mode')
+    `).all() as Array<{ key: string; value: string }>;
+    const state = new Map(stateRows.map((row) => [row.key, row.value]));
+    const storedFailures = Number.parseInt(state.get("consecutive_failed_startups") ?? "0", 10);
+    return {
+      incomplete: state.get("startup") === "starting",
+      consecutiveFailedStartups: Number.isSafeInteger(storedFailures) && storedFailures >= 0 ? storedFailures : 0,
+      safeMode: state.get("safe_mode") === "1"
+    };
+  }
+
+  public resetSafeMode(): void {
+    this.setRuntimeState("safe_mode", "0");
+  }
+
+  private setRuntimeState(key: string, value: string): void {
     this.database.prepare(`
-      INSERT INTO plugin_runtime_state (key, value) VALUES ('startup', ?)
+      INSERT INTO plugin_runtime_state (key, value) VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
-    `).run(value);
+    `).run(key, value);
   }
 }
