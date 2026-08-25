@@ -63,6 +63,14 @@ function processExists(pid: number): boolean {
   }
 }
 
+async function waitForProcessExit(pid: number, timeoutMs = 3_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (processExists(pid) && Date.now() < deadline) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+  }
+  return !processExists(pid);
+}
+
 class MockChild extends EventEmitter {
   public exitCode: number | null = null;
   public signalCode: NodeJS.Signals | null = null;
@@ -523,7 +531,7 @@ describe("cross-platform local launcher", () => {
       const outcome = await launchResult;
       expect(outcome.value).toBeNull();
       expect(outcome.error).toBeInstanceOf(Error);
-      expect(processExists(collisionPid)).toBe(false);
+      expect(await waitForProcessExit(collisionPid)).toBe(true);
     } finally {
       if (collisionPid && processExists(collisionPid)) process.kill(collisionPid, "SIGKILL");
       await new Promise<void>((resolveClose) => incumbent.close(() => resolveClose()));

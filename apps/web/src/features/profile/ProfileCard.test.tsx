@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProfileCard } from "./ProfileCard";
 
@@ -12,6 +12,7 @@ const emptyProfile = {
 
 describe("ProfileCard", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
   it("sends edited personal information to its save boundary", async () => {
