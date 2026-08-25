@@ -17,6 +17,45 @@ const layout = [
   { moduleId: "ai-chat", x: 12, y: 0, w: 4, h: 5, enabled: true }
 ];
 
+const contributions = [
+  {
+    pluginId: "lyj.system.ai-chat",
+    contribution: {
+      type: "dashboard", id: "ai-chat", title: "大模型对话",
+      component: "system.ai-chat.dashboard", minW: 4, minH: 5
+    }
+  },
+  {
+    pluginId: "lyj.system.ai-polish",
+    contribution: {
+      type: "route", id: "ai-polish-page", path: "/ai-office/polish",
+      component: "system.ai-polish.page"
+    }
+  },
+  {
+    pluginId: "lyj.system.ai-polish",
+    contribution: {
+      type: "ai-tool", id: "ai-polish", label: "AI 润色",
+      description: "日报、领导沟通、翻译和普通润色，按不同场景使用专属提示词。",
+      path: "/ai-office/polish", icon: "sparkles", position: 10
+    }
+  },
+  {
+    pluginId: "lyj.system.reminders",
+    contribution: {
+      type: "navigation", id: "reminders", label: "提醒事项",
+      path: "/reminders", icon: "bell", position: 20
+    }
+  },
+  {
+    pluginId: "lyj.system.reminders",
+    contribution: {
+      type: "route", id: "reminders-page", path: "/reminders",
+      component: "system.reminders.page"
+    }
+  }
+];
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -33,6 +72,7 @@ describe("complete application navigation", () => {
       const path = String(input);
       const method = init?.method ?? "GET";
       if (path === "/api/vault/status") return json({ configured: true, unlocked: true });
+      if (path === "/api/plugins/contributions") return json(contributions);
       if (path === "/api/preferences/navigation") return json(navigation);
       if (path === "/api/preferences/layout" && method === "GET") return json(layout);
       if (path === "/api/preferences/layout" && method === "PUT") return json(JSON.parse(String(init?.body)));

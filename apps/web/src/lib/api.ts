@@ -103,6 +103,10 @@ async function exportDatabase(): Promise<string> {
 
 export const api = {
   exportDatabase,
+  getPluginContributions: (signal?: AbortSignal) => requestJson<unknown>(
+    "/plugins/contributions",
+    signal ? { signal } : undefined
+  ),
   getVaultStatus: () => requestJson<VaultStatus>("/vault/status"),
   getLegacyImportStatus: () => requestJson<{ detected: boolean }>("/vault/legacy-import-status"),
   setupVault: (masterPassword: string) => requestJson<VaultStatus>("/vault/setup", {

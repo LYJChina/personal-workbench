@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import type { ModuleId, ProfileResponse, ProfileUpdate } from "@workbench/contracts";
 import { ProfileCard } from "../profile/ProfileCard";
 import { api } from "../../lib/api";
-import { WorkdayCalendarCard } from "../calendar/WorkdayCalendarCard";
-import { UpcomingRemindersCard } from "../reminders/UpcomingRemindersCard";
-import { AiChatCard } from "../ai-chat/AiChatCard";
+import type { DashboardContribution } from "../../plugins/ContributionProvider";
 
 export interface ModuleDefinition {
   id: ModuleId;
@@ -43,24 +41,20 @@ function ProfileModule() {
   return <>{error && <p role="alert">{error}</p>}<ProfileCard initialProfile={profile} onSave={saveProfile} onUploadPhoto={uploadPhoto} /></>;
 }
 
-export const moduleRegistry: Record<ModuleId, ModuleDefinition> = {
+export const moduleRegistry: Partial<Record<ModuleId, ModuleDefinition>> = {
   profile: {
     id: "profile",
     title: "个人信息",
     minW: 4,
     minH: 5,
     render: () => <ProfileModule />
-  },
-  "workday-calendar": {
-    id: "workday-calendar", title: "中国工作日日历", minW: 4, minH: 5,
-    render: () => <WorkdayCalendarCard />
-  },
-  "upcoming-reminders": {
-    id: "upcoming-reminders", title: "近期提醒", minW: 4, minH: 5,
-    render: () => <UpcomingRemindersCard />
-  },
-  "ai-chat": {
-    id: "ai-chat", title: "大模型对话", minW: 4, minH: 5,
-    render: () => <AiChatCard />
   }
 };
+
+export function createModuleRegistry(contributions: DashboardContribution[]): Partial<Record<ModuleId, ModuleDefinition>> {
+  const registry: Partial<Record<ModuleId, ModuleDefinition>> = { ...moduleRegistry };
+  for (const { id, title, minW, minH, Component } of contributions) {
+    registry[id] = { id, title, minW, minH, render: () => <Component /> };
+  }
+  return registry;
+}

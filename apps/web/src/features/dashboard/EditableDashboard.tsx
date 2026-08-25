@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactGridLayout, { type Layout } from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 import type { DashboardLayout } from "@workbench/contracts";
-import { moduleRegistry } from "./moduleRegistry";
+import { createModuleRegistry, type ModuleDefinition } from "./moduleRegistry";
 import { dailyQuote } from "./dailyQuotes";
 import { Icon } from "../../app/Icon";
+import { usePluginContributions } from "../../plugins/ContributionProvider";
 
 interface EditableDashboardProps {
   initialLayout: DashboardLayout[];
@@ -12,9 +13,9 @@ interface EditableDashboardProps {
   now?: Date;
 }
 
-function toGridLayout(layout: DashboardLayout[], columns = 12): Layout {
-  return layout.filter((item) => item.enabled).map((item) => {
-    const definition = moduleRegistry[item.moduleId];
+function toGridLayout(layout: DashboardLayout[], registry: Partial<Record<DashboardLayout["moduleId"], ModuleDefinition>>, columns = 12): Layout {
+  return layout.filter((item) => item.enabled && registry[item.moduleId]).map((item) => {
+    const definition = registry[item.moduleId]!;
     return {
       i: item.moduleId,
       x: columns === 4 ? 0 : item.x,
@@ -28,6 +29,8 @@ function toGridLayout(layout: DashboardLayout[], columns = 12): Layout {
 }
 
 export function EditableDashboard({ initialLayout, onSave, now }: EditableDashboardProps) {
+  const { dashboardModules } = usePluginContributions();
+  const registry = useMemo(() => createModuleRegistry(dashboardModules), [dashboardModules]);
   const [layout, setLayout] = useState(initialLayout);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -96,12 +99,12 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
           width={gridWidth}
           cols={columns}
           rowHeight={72}
-          layout={toGridLayout(layout, columns)}
+          layout={toGridLayout(layout, registry, columns)}
           isDraggable={editing}
           isResizable={editing}
           onLayoutChange={updateLayout}
         >
-          {layout.filter((item) => item.enabled).map((item) => <div key={item.moduleId} className="dashboard-module">{editing && <div className="drag-handle" aria-hidden="true">••••••</div>}{moduleRegistry[item.moduleId].render()}</div>)}
+          {layout.filter((item) => item.enabled && registry[item.moduleId]).map((item) => <div key={item.moduleId} className="dashboard-module">{editing && <div className="drag-handle" aria-hidden="true">••••••</div>}{registry[item.moduleId]!.render()}</div>)}
         </ReactGridLayout>
       </div>
     </section>

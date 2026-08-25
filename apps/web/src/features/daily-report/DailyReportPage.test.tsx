@@ -61,6 +61,23 @@ describe("AI Office daily report flow", () => {
       { id: "settings", label: "设置", path: "/settings", position: 4, visible: true, disabled: false }
     ]);
     vi.spyOn(api, "getTheme").mockResolvedValue({ theme: "light" });
+    vi.spyOn(api, "getPluginContributions").mockResolvedValue([
+      {
+        pluginId: "lyj.system.ai-polish",
+        contribution: {
+          type: "route", id: "ai-polish-page", path: "/ai-office/polish",
+          component: "system.ai-polish.page"
+        }
+      },
+      {
+        pluginId: "lyj.system.ai-polish",
+        contribution: {
+          type: "ai-tool", id: "ai-polish", label: "AI 润色",
+          description: "日报、领导沟通、翻译和普通润色。",
+          path: "/ai-office/polish", icon: "sparkles", position: 10
+        }
+      }
+    ]);
     vi.spyOn(api, "getLayout").mockResolvedValue([]);
     vi.spyOn(api, "getDailyReports").mockResolvedValue([]);
     const user = userEvent.setup();
