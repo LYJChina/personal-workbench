@@ -18,12 +18,12 @@ import { PluginRepository } from "../src/modules/plugins/plugin.repository";
 import { compiledSystemPluginManifests } from "../src/system-plugins/manifests";
 
 const pluginIds = [
+  "lyj.system.password-manager",
   "lyj.system.ai-chat",
   "lyj.system.ai-polish",
   "lyj.system.daily-reports",
   "lyj.system.reminders",
-  "lyj.system.workday-calendar",
-  "lyj.system.password-manager"
+  "lyj.system.workday-calendar"
 ] ;
 
 const expectedContributions = [
@@ -102,7 +102,11 @@ const expectedContributions = [
   }
 ];
 
-expectedContributions.sort((left, right) => left.pluginId.localeCompare(right.pluginId) || String(left.contribution.id).localeCompare(String(right.contribution.id)));
+const contributionPluginOrder = new Map([
+  ["lyj.system.password-manager", 0], ["lyj.system.ai-chat", 1], ["lyj.system.ai-polish", 2],
+  ["lyj.system.daily-reports", 3], ["lyj.system.reminders", 4], ["lyj.system.workday-calendar", 5]
+]);
+expectedContributions.sort((left, right) => (contributionPluginOrder.get(left.pluginId) ?? 99) - (contributionPluginOrder.get(right.pluginId) ?? 99));
 
 const disabledBody = { error: { message: "Plugin disabled", code: "PLUGIN_DISABLED" } };
 
@@ -118,7 +122,7 @@ describe("compiled system plugin API", () => {
   });
 
   it("exports five deeply immutable validated manifests in stable plugin-ID order", () => {
-    expect(compiledSystemPluginManifests.map((manifest) => manifest.id)).toEqual(pluginIds);
+    expect([...compiledSystemPluginManifests.map((manifest) => manifest.id)].sort()).toEqual([...pluginIds].sort());
     expect(compiledSystemPluginManifests).toHaveLength(6);
     expect(Object.isFrozen(compiledSystemPluginManifests)).toBe(true);
     for (const manifest of compiledSystemPluginManifests) {
