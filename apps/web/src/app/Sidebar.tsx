@@ -14,11 +14,12 @@ const fallbackPreferences: NavigationItem[] = [
   { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },
   { id: "ai-office", label: "AI 办公", path: "/ai-office", position: 1, visible: true, disabled: false },
   { id: "reminders", label: "提醒事项", path: "/reminders", position: 2, visible: true, disabled: false },
-  { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 3, visible: true, disabled: true },
-  { id: "settings", label: "设置", path: "/settings", position: 4, visible: true, disabled: false }
+  { id: "plugins", label: "插件中心", path: "/plugins", position: 3, visible: true, disabled: false },
+  { id: "password-manager", label: "密码保险箱", path: "/password-vault", position: 4, visible: true, disabled: false },
+  { id: "settings", label: "设置", path: "/settings", position: 5, visible: true, disabled: false }
 ];
 
-const navIcons: Record<string, IconName> = { home: "home", "ai-office": "sparkles", reminders: "bell", "vault-coming-soon": "lock", settings: "settings" };
+const navIcons: Record<string, IconName> = { home: "home", "ai-office": "sparkles", reminders: "bell", "password-manager": "lock", plugins: "grid", settings: "settings" };
 const iconNames = new Set<IconName>(["home", "sparkles", "bell", "lock", "settings", "edit", "arrow", "user", "copy", "file", "palette", "mail", "check", "grid", "clock"]);
 
 function iconName(value: string | undefined): IconName {
@@ -39,7 +40,7 @@ export function Sidebar({ initialItems }: SidebarProps) {
     api.getNavigation().then(setPreferences).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "导航加载失败"));
   }, [initialItems]);
 
-  const coreIds = new Set<NavigationItem["id"]>(["home", "ai-office", "vault-coming-soon", "settings"]);
+  const coreIds = new Set<NavigationItem["id"]>(["home", "ai-office", "plugins", "password-manager", "settings"]);
   const preferenceById = new Map(preferences.map((item) => [item.id, item]));
   const contributionById = new Map(navigation.map((item) => [item.id, item]));
   const items = preferences
@@ -94,7 +95,6 @@ export function Sidebar({ initialItems }: SidebarProps) {
         {items.filter((item) => item.visible).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)).map((item) => {
           const contributionIcon = contributionById.get(item.id)?.icon;
           const icon = <Icon name={navIcons[item.id] ?? iconName(contributionIcon)} />;
-          if (item.id === "vault-coming-soon") return <span key={item.id} aria-disabled="true" className="disabled-nav-item">{icon}{item.label}<small>即将推出</small></span>;
           return <NavLink key={item.id} to={item.path} end={item.path === "/"} className={({ isActive }) => isActive ? "active" : undefined}>{icon}<span>{item.label}</span></NavLink>;
         })}
       </nav>

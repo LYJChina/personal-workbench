@@ -12,7 +12,7 @@ interface LegacyProfilePhotoRow { photo_filename: string | null; photo_blob: Buf
 const maxPhotoBytes = 5 * 1024 * 1024;
 const migrationLockBudgetMs = 5_000;
 const busyRetrySignal = new Int32Array(new SharedArrayBuffer(4));
-export const currentSchemaVersion = 4;
+export const currentSchemaVersion = 7;
 const futureSchemaError = "Database schema version is newer than supported";
 const invalidRecoveryError = "Database migration recovery snapshot is invalid";
 
@@ -89,6 +89,14 @@ function migrateAiPolishHistory(database: Database.Database): void {
       SELECT id, 'daily_report', completed, risks, '历史日报使用原日报提示词生成。', content, model, created_at, updated_at
       FROM daily_reports`);
   })();
+}
+
+function migrateVaultRecovery(database: Database.Database, sql: string): void {
+  database.exec(sql);
+  const columns = database.pragma("table_info(vault_metadata)") as TableColumn[];
+  if (!columns.some((column) => column.name === "format_version")) {
+    database.exec("ALTER TABLE vault_metadata ADD COLUMN format_version INTEGER NOT NULL DEFAULT 1 CHECK (format_version IN (1, 2))");
+  }
 }
 
 function identifyImageMime(bytes: Buffer): "image/jpeg" | "image/png" | "image/webp" | null {
@@ -259,6 +267,27 @@ const migrations: Migration[] = [
     run: (database, readMigration) => database.exec(readMigration(
       new URL("./migrations/004_plugin_kernel.sql", import.meta.url),
       new URL("../../src/db/migrations/004_plugin_kernel.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 5,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/005_ai_connections.sql", import.meta.url),
+      new URL("../../src/db/migrations/005_ai_connections.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 6,
+    run: (database, readMigration) => migrateVaultRecovery(database, readMigration(
+      new URL("./migrations/006_vault_recovery.sql", import.meta.url),
+      new URL("../../src/db/migrations/006_vault_recovery.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 7,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/007_password_manager.sql", import.meta.url),
+      new URL("../../src/db/migrations/007_password_manager.sql", import.meta.url)
     ))
   }
 ];

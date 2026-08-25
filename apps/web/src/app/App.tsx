@@ -12,9 +12,21 @@ import { ThemeProvider } from "./ThemeProvider";
 import { Icon } from "./Icon";
 import { AppearanceProvider } from "./AppearanceProvider";
 import { VaultGate } from "../features/vault/VaultGate";
+import { PasswordManagerPage } from "../features/password-manager/PasswordManagerPage";
+import { PluginCenterPage } from "../features/plugins/PluginCenterPage";
 
 function Shell() {
   const { loading, error } = usePluginContributions();
+  const [smtpWarning, setSmtpWarning] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    api.getVaultRecoveryStatus().then((status) => {
+      if (!active) return;
+      if (status.smtpHealth === "invalid") setSmtpWarning("SMTP 授权已失效，请前往设置更新");
+      else if (status.smtpHealth === "unreachable") setSmtpWarning("暂时无法检测 SMTP，稍后会再次检测");
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">跳到主要内容</a>
@@ -25,6 +37,7 @@ function Shell() {
         </header>
         {loading && <p className="info-banner" role="status">正在加载插件功能…</p>}
         {error && <p className="info-banner" role="alert">{error}</p>}
+        {smtpWarning && <p className="info-banner" role="status">{smtpWarning}</p>}
         <main id="main-content"><Outlet /></main>
       </div>
     </div>
@@ -58,6 +71,8 @@ export function App() {
               <Route element={<Shell />}>
                 <Route index element={<HomePage />} />
                 <Route path="ai-office" element={<AiOfficePage />} />
+                <Route path="password-vault" element={<PasswordManagerPage />} />
+                <Route path="plugins" element={<PluginCenterPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="*" element={<PluginRoutes />} />
               </Route>

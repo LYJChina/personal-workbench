@@ -48,7 +48,7 @@ describe("plugin schema and repository", () => {
     return { database, repository: new PluginRepository(database) };
   }
 
-  it("upgrades a populated v3 database to v4 without losing existing data", async () => {
+  it("upgrades a populated v3 database through current migrations without losing existing data", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "lyj-plugin-v3-"));
     temporaryDirectories.push(dataDir);
     const paths = resolveAppPaths({ dataDir });
@@ -60,7 +60,7 @@ describe("plugin schema and repository", () => {
 
     const upgraded = openDatabase(paths);
     try {
-      expect(upgraded.pragma("user_version", { simple: true })).toBe(4);
+      expect(upgraded.pragma("user_version", { simple: true })).toBe(7);
       expect(upgraded.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("preserve-me")).toBe("preserved-value");
       expect(upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'installed_plugins'").pluck().get()).toBe("installed_plugins");
     } finally {

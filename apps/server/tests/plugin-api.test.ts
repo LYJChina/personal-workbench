@@ -22,8 +22,9 @@ const pluginIds = [
   "lyj.system.ai-polish",
   "lyj.system.daily-reports",
   "lyj.system.reminders",
-  "lyj.system.workday-calendar"
-] as const;
+  "lyj.system.workday-calendar",
+  "lyj.system.password-manager"
+] ;
 
 const expectedContributions = [
   {
@@ -90,8 +91,18 @@ const expectedContributions = [
       type: "dashboard", id: "workday-calendar", title: "中国工作日日历",
       component: "system.workday-calendar.dashboard", minW: 4, minH: 5
     }
+  },
+  {
+    pluginId: "lyj.system.password-manager",
+    contribution: { type: "navigation", id: "password-manager", label: "密码保险箱", path: "/password-vault", icon: "lock", position: 80 }
+  },
+  {
+    pluginId: "lyj.system.password-manager",
+    contribution: { type: "route", id: "password-manager-page", path: "/password-vault", component: "system.password-manager.page" }
   }
-] as const;
+];
+
+expectedContributions.sort((left, right) => left.pluginId.localeCompare(right.pluginId) || String(left.contribution.id).localeCompare(String(right.contribution.id)));
 
 const disabledBody = { error: { message: "Plugin disabled", code: "PLUGIN_DISABLED" } };
 
@@ -108,7 +119,7 @@ describe("compiled system plugin API", () => {
 
   it("exports five deeply immutable validated manifests in stable plugin-ID order", () => {
     expect(compiledSystemPluginManifests.map((manifest) => manifest.id)).toEqual(pluginIds);
-    expect(compiledSystemPluginManifests).toHaveLength(5);
+    expect(compiledSystemPluginManifests).toHaveLength(6);
     expect(Object.isFrozen(compiledSystemPluginManifests)).toBe(true);
     for (const manifest of compiledSystemPluginManifests) {
       expect(manifest).toMatchObject({
@@ -526,7 +537,7 @@ describe("compiled system plugin API", () => {
 
     const safeApp = createApp({ dataDir });
     const paused = await request(safeApp).get("/api/plugins").expect(200);
-    expect(paused.body).toHaveLength(5);
+    expect(paused.body).toHaveLength(6);
     expect(paused.body.every((summary: { enabled: boolean; runtimeStatus: string }) =>
       summary.enabled && summary.runtimeStatus === "safe-mode"
     )).toBe(true);

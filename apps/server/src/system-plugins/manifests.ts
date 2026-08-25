@@ -134,6 +134,32 @@ const compiledManifestInputs = [
         minH: 5
       }
     ]
+  },
+  {
+    manifestVersion: 1,
+    id: "lyj.system.password-manager",
+    name: "密码保险箱",
+    version: "1.0.0",
+    author: "LYJ Workbench",
+    kind: "system",
+    platforms: ["win32", "darwin"],
+    permissions: [],
+    contributions: [
+      {
+        type: "navigation",
+        id: "password-manager",
+        label: "密码保险箱",
+        path: "/password-vault",
+        icon: "lock",
+        position: 80
+      },
+      {
+        type: "route",
+        id: "password-manager-page",
+        path: "/password-vault",
+        component: "system.password-manager.page"
+      }
+    ]
   }
 ] as const;
 
