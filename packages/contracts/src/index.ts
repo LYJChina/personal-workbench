@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export * from "./plugins";
+export * from "./surfaces";
+export * from "./password-manager";
 
 export const WORKBENCH_MUTATION_HEADER_NAME = "X-LYJ-Workbench-Request";
 export const WORKBENCH_MUTATION_HEADER_VALUE = "local-browser-v1";
