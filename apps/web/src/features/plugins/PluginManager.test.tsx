@@ -285,7 +285,8 @@ describe("PluginManager", () => {
       .mockResolvedValueOnce([{ itemId: "lyj.plugin.newer", position: 0 }]);
     render(<PluginManager api={api} refreshContributions={vi.fn()} />);
 
-    await user.click(await screen.findByRole("button", { name: "添加到 AI 办公" }));
+    const article = await screen.findByRole("article", { name: "大模型对话" });
+    await user.click(within(article).getByRole("button", { name: "添加到 AI 办公" }));
 
     expect(api.getAiOfficeOrder).toHaveBeenCalledTimes(2);
     expect(api.updateAiOfficeOrder).toHaveBeenCalledWith([
@@ -310,6 +311,23 @@ describe("PluginManager", () => {
     expect(screen.getByRole("checkbox", { name: "启用 大模型对话" })).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent("AI 办公入口暂时无法更新，请稍后重试。");
     expect(document.body).not.toHaveTextContent("SQLITE_BUSY");
+  });
+
+  it("applies the visible add intent idempotently when a fresh order already contains the plugin", async () => {
+    const api = createApi() as PluginManagerApi & {
+      getAiOfficeOrder: ReturnType<typeof vi.fn>;
+      updateAiOfficeOrder: ReturnType<typeof vi.fn>;
+    };
+    vi.mocked(api.getAiOfficeOrder)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ itemId: running.manifest.id, position: 0 }]);
+    const user = userEvent.setup();
+    render(<PluginManager api={api} refreshContributions={vi.fn()} />);
+
+    const article = await screen.findByRole("article", { name: "大模型对话" });
+    await user.click(within(article).getByRole("button", { name: "添加到 AI 办公" }));
+
+    expect(api.updateAiOfficeOrder).toHaveBeenCalledWith([{ itemId: running.manifest.id, position: 0 }]);
   });
 
   it("prevents duplicate AI Office placement mutations and shows fixed Chinese feedback on failure", async () => {

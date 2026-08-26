@@ -238,10 +238,10 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
         .slice()
         .sort((left, right) => left.position - right.position)
         .map((item) => item.itemId);
-      const included = currentIds.includes(plugin.manifest.id);
-      const nextIds = included ? currentIds.filter((itemId) => itemId !== plugin.manifest.id) : [...currentIds, plugin.manifest.id];
+      const nextIds = cachedIncluded
+        ? currentIds.filter((itemId) => itemId !== plugin.manifest.id)
+        : currentIds.includes(plugin.manifest.id) ? currentIds : [...currentIds, plugin.manifest.id];
       const nextOrder = normalizeAiOfficeOrder(nextIds);
-      setPending({ kind: "ai-office", id: plugin.manifest.id, mode: included ? "remove" : "add" });
       setAiOfficeOrder(nextOrder);
       const saved = await api.updateAiOfficeOrder(nextOrder);
       if (!mounted.current || mutationGeneration.current !== generation || controller.signal.aborted) return;
