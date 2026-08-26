@@ -78,6 +78,8 @@ git commit -m "feat: persist AI office plugin order"
 - Create: `apps/web/src/features/ai-office/FixedPluginGrid.test.tsx`
 - Modify: `apps/web/src/features/ai-office/AiOfficePage.tsx`
 - Modify: `apps/web/src/features/ai-office/AiOfficePage.test.tsx`
+- Modify: `apps/web/src/features/plugins/PluginManager.tsx`
+- Modify: `apps/web/src/features/plugins/PluginManager.test.tsx`
 - Modify: `apps/web/src/styles/global.css`
 
 **Interfaces:**
@@ -86,7 +88,7 @@ git commit -m "feat: persist AI office plugin order"
 
 - [ ] **Step 1: Write failing page and grid tests**
 
-Test that the page renders fixed cards without `.react-grid-layout` or resize handles, adds an available plugin, removes a shortcut without uninstalling, reorders through drag and up/down controls, saves through the API, and retains draft state after a rejected save.
+Test that the page renders fixed cards without `.react-grid-layout` or resize handles, adds an available plugin, removes a shortcut without uninstalling, reorders through drag and up/down controls, saves through the API, and retains draft state after a rejected save. Test that Plugin Center's “添加到 AI 办公” action uses the same database order API while its dashboard action keeps the existing dashboard placement mechanism.
 
 Also test one-time migration ordering: legacy `SurfaceLayoutItem[]` is sorted by `y`, then `x`, then source order; legacy localStorage placement is imported only when the database order has not been initialized.
 
@@ -101,6 +103,8 @@ Expected: failures because `FixedPluginGrid` and the fixed editing workflow do n
 Use semantic list markup and native drag events. In edit mode each card exposes “上移”, “下移”, and “移出 AI 办公”; the available-plugin section exposes “添加”. Saving converts the ordered IDs to contiguous positions.
 
 Remove `EditableSurfaceGrid` from AI Office only. Convert legacy coordinate layout to ordered IDs with a pure `migrateAiOfficeOrder` helper, persist the result through the preferences API, and clear the obsolete `lyj.ai-office.layout` key after successful migration.
+
+Replace Plugin Manager's AI Office localStorage placement toggle with a read-modify-write call to `getAiOfficeOrder` and `updateAiOfficeOrder`. Preserve the current localStorage placement path for dashboard shortcuts until dashboard placement receives its own database contract.
 
 CSS contract:
 
@@ -123,7 +127,7 @@ Expected: all focused tests pass and AI Office imports no free-form grid compone
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add apps/web/src/features/ai-office/FixedPluginGrid.tsx apps/web/src/features/ai-office/FixedPluginGrid.test.tsx apps/web/src/features/ai-office/AiOfficePage.tsx apps/web/src/features/ai-office/AiOfficePage.test.tsx apps/web/src/styles/global.css
+git add apps/web/src/features/ai-office/FixedPluginGrid.tsx apps/web/src/features/ai-office/FixedPluginGrid.test.tsx apps/web/src/features/ai-office/AiOfficePage.tsx apps/web/src/features/ai-office/AiOfficePage.test.tsx apps/web/src/features/plugins/PluginManager.tsx apps/web/src/features/plugins/PluginManager.test.tsx apps/web/src/styles/global.css
 git commit -m "feat: add fixed AI office plugin grid"
 ```
 
