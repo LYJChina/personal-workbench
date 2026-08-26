@@ -439,7 +439,7 @@ describe("server-declared web contributions", () => {
     expect(screen.getByRole("link", { name: "提醒事项" })).toBeVisible();
     const originalGeometry = screen.getByRole("region", { name: "大模型对话" }).closest(".react-grid-item")?.getAttribute("style");
     expect(originalGeometry).toBeTruthy();
-    const originalNavigationOrder = within(screen.getByRole("navigation")).getAllByRole("link").map((link) => link.textContent);
+    const originalNavigationOrder = within(screen.getByRole("navigation", { name: "工作区" })).getAllByRole("link").map((link) => link.textContent);
 
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
     const originalToolOrder = within(screen.getByRole("main")).getAllByRole("link", { name: /AI 润色|日报生成/ }).map((link) => link.getAttribute("aria-label"));
@@ -477,7 +477,7 @@ describe("server-declared web contributions", () => {
     await user.click(screen.getByRole("link", { name: "我的主页" }));
     expect(await screen.findByRole("region", { name: "大模型对话" })).toBeVisible();
     expect(screen.getByRole("region", { name: "大模型对话" }).closest(".react-grid-item")?.getAttribute("style")).toBe(originalGeometry);
-    expect(within(screen.getByRole("navigation")).getAllByRole("link").map((link) => link.textContent)).toEqual(originalNavigationOrder);
+    expect(within(screen.getByRole("navigation", { name: "工作区" })).getAllByRole("link").map((link) => link.textContent)).toEqual(originalNavigationOrder);
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
     expect(within(screen.getByRole("main")).getAllByRole("link", { name: /AI 润色|日报生成/ }).map((link) => link.getAttribute("aria-label"))).toEqual(originalToolOrder);
     await user.click(screen.getByRole("link", { name: "AI 润色" }));
