@@ -81,19 +81,19 @@ export function Sidebar({ initialItems }: SidebarProps) {
       occupiedPositions.add(position);
       return { ...item, position };
     });
-    const inactive = preferences.filter((item) => !activeIds.has(item.id));
+    const inactive = preferences.filter((item) => item.id !== "plugins" && !activeIds.has(item.id));
     const payload = [...inactive, ...mergedActive]
       .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
     setPreferences(await api.updateNavigation(payload));
   }
 
-  if (editing) return <aside className="sidebar sidebar-editing"><SidebarEditor initialItems={items} onSave={save} onClose={() => setEditing(false)} /></aside>;
+  if (editing) return <aside className="sidebar sidebar-editing"><SidebarEditor initialItems={items.filter((item) => item.id !== "plugins")} onSave={save} onClose={() => setEditing(false)} /></aside>;
 
   const visibleItems = items
     .filter((item) => item.visible)
     .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
   const workspaceItems = visibleItems.filter((item) => item.id !== "settings" && item.id !== "plugins");
-  const pluginItem = visibleItems.find((item) => item.id === "plugins");
+  const pluginItem = visibleItems.find((item) => item.id === "plugins") ?? fallbackPreferences.find((item) => item.id === "plugins")!;
 
   function renderLink(item: NavigationItem) {
     const contributionIcon = contributionById.get(item.id)?.icon;
@@ -107,7 +107,7 @@ export function Sidebar({ initialItems }: SidebarProps) {
       {error && <p role="alert">{error}</p>}
       <div className="sidebar-navigation">
         <nav aria-label="工作区">{workspaceItems.map(renderLink)}</nav>
-        {pluginItem && <section className="sidebar-plugin-section"><p className="sidebar-section-label">插件</p><nav aria-label="插件">{renderLink(pluginItem)}</nav></section>}
+        <section className="sidebar-plugin-section"><p className="sidebar-section-label">插件</p><nav aria-label="插件">{renderLink(pluginItem)}</nav></section>
       </div>
       <div className="sidebar-footer"><NavLink to="/settings" className={({ isActive }) => `sidebar-settings-link${isActive ? " active" : ""}`}><Icon name="settings" /><span>设置</span></NavLink><button className="button-ghost" type="button" onClick={() => setEditing(true)}><Icon name="edit" size={17} />编辑导航</button><p><span className="status-dot" /> 本地服务已连接</p></div>
     </aside>

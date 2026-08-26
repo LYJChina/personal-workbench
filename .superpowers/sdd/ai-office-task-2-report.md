@@ -113,3 +113,15 @@ Result:
 
 - No blocking implementation concern.
 - `git diff --check` returned only pre-existing line-ending warnings about LF→CRLF normalization in the working copy; there were no whitespace or patch-format errors.
+
+## Review fix wave
+
+- Locked visible and addable cards to exactly 6.875rem with controlled overflow.
+- Reread the latest database order before every Plugin Center AI Office mutation.
+- Stably deduplicated legacy tool IDs by plugin ID.
+- Cleared stale AI Office legacy state once a non-empty database order is authoritative.
+- Restored the dashboard EditableSurfaceGrid AI tool-card sizing override.
+- Decoupled plugin lifecycle list loading from AI Office order loading.
+- Removed the unused contribution import.
+
+Focused verification: `pnpm --filter @workbench/web test -- src/features/ai-office/AiOfficePage.test.tsx src/features/ai-office/FixedPluginGrid.test.tsx src/features/plugins/PluginManager.test.tsx` passed 23/23 tests. `pnpm --filter @workbench/web check` passed. `git diff --check` reported only Windows LF-to-CRLF notices.

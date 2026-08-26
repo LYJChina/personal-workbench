@@ -191,16 +191,11 @@ describe("SidebarEditor", () => {
     expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
   });
 
-  it("hides the entire plugin navigation section when plugin center is hidden", () => {
-    const items: NavigationItem[] = [
-      ...navigation,
-      { id: "plugins", label: "插件中心", path: "/plugins", position: 5, visible: false, disabled: false }
-    ];
+  it("keeps the core plugin section when stored navigation comes from an older database", () => {
+    render(<MemoryRouter><Sidebar initialItems={navigation} /></MemoryRouter>);
 
-    render(<MemoryRouter><Sidebar initialItems={items} /></MemoryRouter>);
-
-    expect(screen.queryByRole("navigation", { name: "插件" })).not.toBeInTheDocument();
-    expect(screen.queryByText("插件", { selector: ".sidebar-section-label" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "插件" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "插件中心" })).toHaveAttribute("href", "/plugins");
   });
 
   it("preserves an inactive sparse row exactly and restores its position after re-enable", async () => {
