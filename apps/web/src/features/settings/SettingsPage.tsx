@@ -19,17 +19,17 @@ export interface SettingsApi extends PluginManagerApi, AiConnectionsApi, Account
   updateMailSettings(settings: MailSettingsUpdate): Promise<MailSettings>;
   testMailConnection(): Promise<ConnectionTestResult>;
   exportDatabase(): Promise<string>;
-  getAiPersona(): Promise<AiPersonaSettings>;
-  updateAiPersona(settings: Omit<AiPersonaSettings, "updatedAt">): Promise<AiPersonaSettings>;
+  getAiPersona?(): Promise<AiPersonaSettings>;
+  updateAiPersona?(settings: Omit<AiPersonaSettings, "updatedAt">): Promise<AiPersonaSettings>;
 }
 
 function AiPersonaPanel({ api }: { api: SettingsApi }) {
   const [value, setValue] = useState<AiPersonaSettings | null>(null);
   const [message, setMessage] = useState("");
-  useEffect(() => { void api.getAiPersona().then(setValue).catch(() => setMessage("画像加载失败")); }, [api]);
+  useEffect(() => { if (api.getAiPersona) void api.getAiPersona().then(setValue).catch(() => setMessage("画像加载失败")); }, [api]);
   if (!value) return <section className="settings-section"><p>{message || "正在加载 AI 画像…"}</p></section>;
-  async function save(event: FormEvent) { event.preventDefault(); setMessage("保存中…"); try { setValue(await api.updateAiPersona({ assistantName: value.assistantName, personality: value.personality, userProfile: value.userProfile, customPrompt: value.customPrompt })); setMessage("AI 设置已保存"); } catch { setMessage("保存失败"); } }
-  return <section className="settings-section" aria-labelledby="ai-persona-heading"><div className="settings-section-heading"><div className="card-icon"><Icon name="sparkles" /></div><div><h3 id="ai-persona-heading">问问 AI 设置</h3><p>自定义 AI 名称、性格和会话系统提示词。</p></div></div><form onSubmit={(event) => void save(event)}><div className="form-grid"><label>AI 名称<input value={value.assistantName} onChange={(event) => setValue({ ...value, assistantName: event.target.value })} /></label><label>AI 性格<input value={value.personality} onChange={(event) => setValue({ ...value, personality: event.target.value })} /></label></div><label>我的个人画像<textarea rows={4} value={value.userProfile} onChange={(event) => setValue({ ...value, userProfile: event.target.value })} /></label><label>自定义系统提示词<textarea rows={5} value={value.customPrompt} onChange={(event) => setValue({ ...value, customPrompt: event.target.value })} /></label><div className="form-actions"><button className="button-primary" type="submit">保存 AI 设置</button>{message && <span role="status">{message}</span>}</div></form></section>;
+  async function save(event: FormEvent) { event.preventDefault(); if (!api.updateAiPersona) return; setMessage("保存中…"); try { setValue(await api.updateAiPersona({ assistantName: value.assistantName, personalityPrompt: value.personalityPrompt, profilePortrait: value.profilePortrait, systemPrompt: value.systemPrompt })); setMessage("AI 设置已保存"); } catch { setMessage("保存失败"); } }
+  return <section className="settings-section" aria-labelledby="ai-persona-heading"><div className="settings-section-heading"><div className="card-icon"><Icon name="sparkles" /></div><div><h3 id="ai-persona-heading">问问 AI 设置</h3><p>自定义 AI 名称、性格和会话系统提示词。</p></div></div><form onSubmit={(event) => void save(event)}><div className="form-grid"><label>AI 名称<input value={value.assistantName} onChange={(event) => setValue({ ...value, assistantName: event.target.value })} /></label><label>AI 性格<input value={value.personalityPrompt} onChange={(event) => setValue({ ...value, personalityPrompt: event.target.value })} /></label></div><label>我的个人画像<textarea rows={4} value={value.profilePortrait} onChange={(event) => setValue({ ...value, profilePortrait: event.target.value })} /></label><label>系统提示词<textarea rows={5} value={value.systemPrompt} onChange={(event) => setValue({ ...value, systemPrompt: event.target.value })} /></label><div className="form-actions"><button className="button-primary" type="submit">保存 AI 设置</button>{message && <span role="status">{message}</span>}</div></form></section>;
 }
 
 interface SettingsPageProps {
