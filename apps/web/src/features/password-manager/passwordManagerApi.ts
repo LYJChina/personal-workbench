@@ -23,5 +23,5 @@ export const passwordManagerApi: PasswordManagerFeatureApi = {
   createEntry: (input) => request("/entries", { method: "POST", body: JSON.stringify(input) }),
   updateEntry: (id, input, version) => request(`/entries/${encodeURIComponent(id)}`, { method: "PUT", headers: version ? { "If-Match": `"${version}"` } : undefined, body: JSON.stringify(input) }),
   deleteEntry: (id, version) => request(`/entries/${encodeURIComponent(id)}`, { method: "DELETE", headers: version ? { "If-Match": `"${version}"` } : undefined }),
-  revealEntry: (id) => request(`/entries/${encodeURIComponent(id)}/reveal`, { method: "POST" }), importEntries: async (items) => { for (const item of items) await request("/entries", { method: "POST", body: JSON.stringify(item) }); }, updateLayout: (items) => request("/layout", { method: "PUT", body: JSON.stringify({ items }) })
+  revealEntry: (id) => request(`/entries/${encodeURIComponent(id)}/reveal`, { method: "POST" }), importEntries: async (items) => { for (const item of items) await request("/entries", { method: "POST", body: JSON.stringify(item) }); }, updateLayout: (items) => request("/layout", { method: "PUT", body: JSON.stringify({ items }) }), requestRedactedAiHelp: (redactedText) => request("/import/assist", { method: "POST", body: JSON.stringify({ text: redactedText }) })
 };

@@ -6,7 +6,7 @@ import request from "supertest";
 import { openDatabase } from "../src/db/database";
 import { resolveAppPaths } from "../src/config/paths";
 import { AiChatRepository } from "../src/modules/ai-chat/ai-chat.repository";
-import { AiChatClient, type AiChatGenerationInput, type AiChatGenerator } from "../src/modules/ai-chat/ai-chat.client";
+import { AiGatewayError, type AiCompletionInput } from "../src/modules/ai-gateway/ai-gateway.types";
 import type { SecretStore } from "../src/platform/secret-store";
 import { createApp } from "../src/app";
 
@@ -14,15 +14,16 @@ class MemorySecretStore implements SecretStore {
   private readonly secrets = new Map<string, string>();
   public async protectSecret(name: string, plaintext: string) { this.secrets.set(name, plaintext); }
   public async readSecret(name: string) { return this.secrets.get(name) ?? null; }
+  public async deleteSecret(name: string) { this.secrets.delete(name); }
 }
 
-class StubChatGenerator implements AiChatGenerator {
-  public readonly inputs: AiChatGenerationInput[] = [];
+class StubChatGenerator {
+  public readonly inputs: AiCompletionInput[] = [];
   public fail = false;
 
-  public async generate(input: AiChatGenerationInput) {
+  public async complete(input: AiCompletionInput) {
     this.inputs.push(input);
-    if (this.fail) throw new Error("upstream failed");
+    if (this.fail) throw new AiGatewayError("upstream");
     return { content: `回答：${input.messages.at(-1)?.content}`, model: "deepseek-chat-actual" };
   }
 }
@@ -55,33 +56,6 @@ describe("AI chat repository", () => {
   });
 });
 
-describe("AI chat model client", () => {
-  it("uses the OpenAI-compatible endpoint and caps the response length", async () => {
-    const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      model: "deepseek-chat-actual",
-      choices: [{ message: { content: "模型回答" } }]
-    }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    const client = new AiChatClient(fetchImplementation);
-
-    await expect(client.generate({
-      baseUrl: "https://api.deepseek.com/",
-      model: "deepseek-chat",
-      apiKey: "secret",
-      messages: [{ role: "user", content: "你好" }]
-    })).resolves.toEqual({ content: "模型回答", model: "deepseek-chat-actual" });
-
-    expect(fetchImplementation).toHaveBeenCalledWith("https://api.deepseek.com/chat/completions", expect.objectContaining({
-      method: "POST",
-      redirect: "manual"
-    }));
-    expect(JSON.parse(String(fetchImplementation.mock.calls[0][1].body))).toMatchObject({
-      model: "deepseek-chat",
-      max_tokens: 2_000,
-      messages: [{ role: "user", content: "你好" }]
-    });
-  });
-});
-
 describe("AI chat API", () => {
   let dataDir: string;
   let secretStore: MemorySecretStore;
@@ -97,15 +71,14 @@ describe("AI chat API", () => {
 
   it("sends prior local messages as bounded conversation context", async () => {
     const generator = new StubChatGenerator();
-    const app = createApp({ dataDir, secretStore, aiChatClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
 
     await request(app).post("/api/ai-chat/messages").send({ content: "第一个问题" }).expect(201);
     const second = await request(app).post("/api/ai-chat/messages").send({ content: "继续说明" }).expect(201);
 
     expect(second.body).toMatchObject({ role: "assistant", content: "回答：继续说明", model: "deepseek-chat-actual" });
-    expect(generator.inputs[1]).toMatchObject({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" });
-    expect(generator.inputs[1].messages.map((message) => [message.role, message.content])).toEqual([
+    expect(generator.inputs[1].messages.slice(1).map((message) => [message.role, message.content])).toEqual([
       ["user", "第一个问题"],
       ["assistant", "回答：第一个问题"],
       ["user", "继续说明"]
@@ -114,19 +87,19 @@ describe("AI chat API", () => {
   });
 
   it("returns a clear configuration error without exposing secrets", async () => {
-    const response = await request(createApp({ dataDir, secretStore, aiChatClient: new StubChatGenerator() }))
+    const response = await request(createApp({ dataDir, secretStore }))
       .post("/api/ai-chat/messages")
       .send({ content: "你好" })
-      .expect(400);
+      .expect(409);
 
-    expect(response.body).toEqual({ error: { message: "请先在设置中配置大模型 API", code: "NOT_CONFIGURED" } });
+    expect(response.body).toEqual({ error: { message: "请先在设置中配置模型服务", code: "AI_NOT_CONFIGURED" } });
     expect(JSON.stringify(response.body)).not.toContain("apiKey");
   });
 
   it("preserves the user message when the model request fails", async () => {
     const generator = new StubChatGenerator();
     generator.fail = true;
-    const app = createApp({ dataDir, secretStore, aiChatClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
 
     await request(app).post("/api/ai-chat/messages").send({ content: "保留这个问题" }).expect(502);
@@ -138,7 +111,7 @@ describe("AI chat API", () => {
 
   it("clears the local conversation", async () => {
     const generator = new StubChatGenerator();
-    const app = createApp({ dataDir, secretStore, aiChatClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
     await request(app).post("/api/ai-chat/messages").send({ content: "临时问题" }).expect(201);
 
@@ -154,13 +127,14 @@ describe("AI chat API", () => {
     }
     database.close();
     const generator = new StubChatGenerator();
-    const app = createApp({ dataDir, secretStore, aiChatClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
 
     await request(app).post("/api/ai-chat/messages").send({ content: "最新问题" }).expect(201);
 
-    expect(generator.inputs[0].messages.length).toBeLessThanOrEqual(20);
-    expect(generator.inputs[0].messages[0].role).toBe("user");
+    expect(generator.inputs[0].messages.length).toBeLessThanOrEqual(21);
+    expect(generator.inputs[0].messages[0].role).toBe("system");
+    expect(generator.inputs[0].messages[1].role).toBe("user");
     expect(generator.inputs[0].messages.at(-1)).toEqual({ role: "user", content: "最新问题" });
   });
 });

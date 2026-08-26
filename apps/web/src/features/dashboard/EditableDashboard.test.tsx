@@ -168,11 +168,10 @@ describe("SidebarEditor", () => {
     expect(onSave).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: "ai-office", position: 2, visible: true })]));
   });
 
-  it("renders the vault as disabled regardless of submitted navigation state", () => {
-    render(<MemoryRouter><Sidebar initialItems={navigation.map((item) => item.id === "vault-coming-soon" ? { ...item, disabled: false } : item)} /></MemoryRouter>);
+  it("renders the password manager as an available local plugin", () => {
+    render(<MemoryRouter><Sidebar initialItems={navigation.map((item) => item.id === "vault-coming-soon" ? { ...item, id: "password-manager", path: "/password-vault", disabled: false } : item)} /></MemoryRouter>);
 
-    expect(screen.getByText("密码保险箱")).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText("即将推出")).toBeVisible();
+    expect(screen.getByRole("link", { name: "密码保险箱" })).toHaveAttribute("href", "/password-vault");
   });
 
   it("preserves an inactive sparse row exactly and restores its position after re-enable", async () => {

@@ -69,7 +69,7 @@ describe("database backup export", () => {
       expect(exported.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'profile'").pluck().get()).toBe("profile");
       expect(exported.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('installed_plugins', 'plugin_permissions', 'plugin_audit_events', 'plugin_runtime_state') ORDER BY name").pluck().all())
         .toEqual(["installed_plugins", "plugin_audit_events", "plugin_permissions", "plugin_runtime_state"]);
-      expect(exported.prepare("SELECT COUNT(*) FROM installed_plugins").pluck().get()).toBe(5);
+      expect(exported.prepare("SELECT COUNT(*) FROM installed_plugins").pluck().get()).toBe(6);
       expect(exported.prepare("SELECT enabled, runtime_status FROM installed_plugins WHERE plugin_id = 'lyj.system.daily-reports'").get())
         .toEqual({ enabled: 0, runtime_status: "stopped" });
       expect(exported.prepare("SELECT COUNT(*) FROM plugin_permissions").pluck().get()).toBeGreaterThan(0);

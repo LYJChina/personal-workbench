@@ -9,7 +9,7 @@ const navigation = [
   { id: "ai-office", label: "AI 办公", path: "/ai-office", position: 1, visible: true, disabled: false },
   { id: "reminders", label: "提醒事项", path: "/reminders", position: 2, visible: true, disabled: false },
   { id: "team-reminders", label: "团队提醒", path: "/reminders", position: 3, visible: true, disabled: false },
-  { id: "vault-coming-soon", label: "密码保险箱", path: "/vault", position: 4, visible: true, disabled: false },
+  { id: "password-manager", label: "密码保险箱", path: "/password-vault", position: 4, visible: true, disabled: false },
   { id: "settings", label: "设置", path: "/settings", position: 5, visible: true, disabled: false }
 ];
 
@@ -122,9 +122,7 @@ describe("complete application navigation", () => {
     await user.click(screen.getByRole("button", { name: "完成编辑" }));
     await waitFor(() => expect(screen.getByTestId("dashboard-grid")).toHaveAttribute("data-editable", "false"));
 
-    const vault = screen.getByText("密码保险箱");
-    expect(vault).toHaveAttribute("aria-disabled", "true");
-    expect(vault.closest("a")).toBeNull();
+    expect(screen.getByRole("link", { name: "密码保险箱" })).toHaveAttribute("href", "/password-vault");
 
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
     expect(await screen.findByRole("heading", { name: "AI 办公" })).toBeVisible();
@@ -150,7 +148,6 @@ describe("complete application navigation", () => {
     await user.click(screen.getByRole("link", { name: "提醒事项" }));
     expect(await screen.findByRole("heading", { name: "提醒事项" })).toBeVisible();
     expect(screen.getByRole("region", { name: "提醒计划" })).toHaveTextContent("外勤打卡");
-    expect(screen.getByText("密码保险箱")).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText("密码保险箱").closest("a")).toBeNull();
+    expect(screen.getByRole("link", { name: "密码保险箱" })).toHaveAttribute("href", "/password-vault");
   });
 });

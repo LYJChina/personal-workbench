@@ -89,7 +89,7 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
   }
 
   const assistantName = persona?.assistantName || "AI";
-  return <section className="dashboard-card ai-chat-card" aria-label={`问问${assistantName}`}>
+  return <section className="dashboard-card ai-chat-card" aria-label="大模型对话">
     <header>
       <div className="ai-chat-title"><span className="card-icon violet"><Icon name="sparkles" size={18} /></span><div><h3>问问 {assistantName}</h3><small>使用你在设置中配置的模型</small></div></div>
       <button className="button-ghost compact" type="button" disabled={loading || sending} onClick={() => void clearConversation()}>新对话</button>

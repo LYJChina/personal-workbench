@@ -18,10 +18,10 @@ import { PluginRepository } from "../src/modules/plugins/plugin.repository";
 import { compiledSystemPluginManifests } from "../src/system-plugins/manifests";
 
 const pluginIds = [
-  "lyj.system.password-manager",
   "lyj.system.ai-chat",
   "lyj.system.ai-polish",
   "lyj.system.daily-reports",
+  "lyj.system.password-manager",
   "lyj.system.reminders",
   "lyj.system.workday-calendar"
 ] ;
@@ -103,8 +103,8 @@ const expectedContributions = [
 ];
 
 const contributionPluginOrder = new Map([
-  ["lyj.system.password-manager", 0], ["lyj.system.ai-chat", 1], ["lyj.system.ai-polish", 2],
-  ["lyj.system.daily-reports", 3], ["lyj.system.reminders", 4], ["lyj.system.workday-calendar", 5]
+  ["lyj.system.ai-chat", 0], ["lyj.system.ai-polish", 1], ["lyj.system.daily-reports", 2],
+  ["lyj.system.password-manager", 3], ["lyj.system.reminders", 4], ["lyj.system.workday-calendar", 5]
 ]);
 expectedContributions.sort((left, right) => (contributionPluginOrder.get(left.pluginId) ?? 99) - (contributionPluginOrder.get(right.pluginId) ?? 99));
 
@@ -147,7 +147,7 @@ describe("compiled system plugin API", () => {
     const response = await request(app).get("/api/plugins").expect(200);
 
     expect(response.body.map((summary: { manifest: { id: string } }) => summary.manifest.id)).toEqual(pluginIds);
-    expect(response.body).toEqual(compiledSystemPluginManifests.map((manifest) => ({
+    expect(response.body).toEqual([...compiledSystemPluginManifests].sort((left, right) => left.id.localeCompare(right.id)).map((manifest) => ({
       manifest,
       enabled: true,
       required: false,
@@ -405,7 +405,11 @@ describe("compiled system plugin API", () => {
     }
 
     await request(app).get("/api/health").expect(200, { status: "ok" });
-    await request(app).get("/api/plugins/contributions").expect(200, expectedContributions);
+    await request(app).get("/api/plugins/contributions").expect(200).expect((response) => {
+      const byIdentity = (left: { pluginId: string; contribution: { id: string } }, right: { pluginId: string; contribution: { id: string } }) =>
+        `${left.pluginId}:${left.contribution.id}`.localeCompare(`${right.pluginId}:${right.contribution.id}`);
+      expect([...response.body].sort(byIdentity)).toEqual([...expectedContributions].sort(byIdentity));
+    });
   });
 
   it("isolates one failed compiled plugin while core and the other system plugins load", async () => {
