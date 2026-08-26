@@ -198,13 +198,12 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
 
   const safeMode = plugins.some((plugin) => plugin.runtimeStatus === "safe-mode");
   const mutationPending = pending !== null;
-  function placementPath(plugin: PluginSummary): string | null {
+  function placementPath(plugin: PluginSummary): string {
     const contribution = plugin.manifest.contributions.find((item) => item.type === "route" || item.type === "navigation" || item.type === "ai-tool");
-    return contribution && "path" in contribution ? contribution.path : null;
+    return contribution && "path" in contribution ? contribution.path : "/";
   }
   function togglePlacement(plugin: PluginSummary, surface: PluginPlacementSurface) {
     const path = placementPath(plugin);
-    if (!path) return;
     const enabled = !placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === surface);
     setPluginPlacement({ pluginId: plugin.manifest.id, name: plugin.manifest.name, path, surface }, enabled);
     setPlacements(readPluginPlacements());
@@ -256,7 +255,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
                 />
                 <span aria-hidden="true" />
               </label>
-              {plugin.enabled && placementPath(plugin) && <div className="plugin-placement-actions"><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "dashboard")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "dashboard") ? "从主页移除" : "添加到我的主页"}</button><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "ai-office")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "ai-office") ? "从 AI 办公移除" : "添加到 AI 办公"}</button></div>}
+              {plugin.enabled && <div className="plugin-placement-actions"><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "dashboard")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "dashboard") ? "从主页移除" : "添加到我的主页"}</button><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "ai-office")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "ai-office") ? "从 AI 办公移除" : "添加到 AI 办公"}</button></div>}
             </article>
           );
         })}
