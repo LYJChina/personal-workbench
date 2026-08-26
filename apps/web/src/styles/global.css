@@ -80,10 +80,18 @@ button, .button-primary, .button-secondary, .button-ghost { min-height: var(--co
 .dashboard-daily-quote { display: grid; gap: .18rem; }
 .dashboard-daily-quote p { margin: 0; color: var(--heading-color); font-size: 1rem; font-weight: 650; line-height: 1.6; }
 .dashboard-daily-quote cite { color: var(--muted-text-color); font-size: .78rem; font-style: normal; }
-.dashboard-grid { min-width: 0; margin: 0 -.75rem; }
-.dashboard-module { position: relative; overflow: auto; padding: clamp(1.1rem, 2.5vw, 1.65rem); border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--surface-background); box-shadow: var(--shadow-sm); }
+.editable-surface-grid, .editable-surface-grid > .react-grid-layout { width: 100%; min-width: 0; }
+.surface-grid-item, .surface-grid-content { min-width: 0; min-height: 0; height: 100%; box-sizing: border-box; }
+.surface-grid-content { position: relative; overflow: hidden; }
+.surface-grid-content > *:not(.drag-handle) { width: 100%; height: 100%; min-width: 0; min-height: 0; box-sizing: border-box; }
+.dashboard-grid { min-width: 0; margin: 0; }
+.dashboard-module { position: relative; height: 100%; min-width: 0; min-height: 0; box-sizing: border-box; overflow: auto; padding: clamp(1.1rem, 2.5vw, 1.65rem); border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--surface-background); box-shadow: var(--shadow-sm); }
 .dashboard-grid[data-editable="true"] .dashboard-module { border-style: dashed; border-color: var(--primary-color); }
-.drag-handle { position: absolute; top: .35rem; left: 50%; color: var(--faint-text-color); font-size: .7rem; letter-spacing: .12em; transform: translateX(-50%); }
+.drag-handle { position: absolute; z-index: 5; top: .35rem; left: 50%; width: 3.5rem; height: 1.3rem; padding: 0; border: 0; border-radius: 999px; color: var(--faint-text-color); background: var(--surface-subtle); font-size: .65rem; line-height: 1; letter-spacing: .12em; cursor: grab; transform: translateX(-50%); }
+.drag-handle:active { cursor: grabbing; }
+.react-grid-item { box-sizing: border-box; }
+.react-grid-item.react-grid-placeholder { border: 1px dashed var(--primary-color); border-radius: var(--radius-lg); background: var(--primary-soft); opacity: .65; }
+.react-grid-item > .react-resizable-handle { right: 4px; bottom: 4px; }
 .react-grid-item > .react-resizable-handle::after { border-color: var(--primary-color); }
 
 .profile-card { height: 100%; }
@@ -119,8 +127,9 @@ a.ai-tool-card:hover { border-color: var(--primary-color); box-shadow: var(--sha
 .tool-arrow { margin-top: auto; color: var(--primary-color); font-size: .78rem; font-weight: 750; }
 .coming-tool { opacity: .72; }
 .tool-icon.muted { color: var(--muted-text-color); background: var(--surface-subtle); }
-.ai-office-page .ai-tool-grid { grid-template-columns: repeat(auto-fill, minmax(18rem, 23rem)); align-self: start; align-content: start; }
+.ai-office-page .ai-tool-grid { display: block; width: 100%; min-width: 0; align-self: start; }
 .ai-office-page .ai-tool-card { min-height: 6.25rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; padding: .85rem; }
+.editable-surface-grid .ai-tool-card { height: 100%; min-height: 0; box-sizing: border-box; overflow: hidden; }
 .ai-office-page .ai-tool-card .tool-arrow { align-self: center; margin-top: 0; white-space: nowrap; }
 .ai-office-note { align-self: end; justify-self: end; max-width: 27rem; display: flex; align-items: center; gap: .65rem; padding: .65rem .8rem; color: var(--muted-text-color); border: 1px solid var(--border-color); border-radius: var(--control-radius); background: var(--surface-background); box-shadow: var(--shadow-sm); }
 .ai-office-note > svg { flex: 0 0 auto; color: var(--primary-color); }
