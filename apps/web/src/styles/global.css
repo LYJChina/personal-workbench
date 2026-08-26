@@ -35,6 +35,9 @@ main { width: 100%; max-width: 94rem; margin: 0 auto; padding: var(--content-pad
 .brand strong { display: block; font-size: 1.08rem; letter-spacing: .04em; color: var(--heading-color); }
 .brand small { display: block; margin-top: .1rem; color: var(--faint-text-color); font-size: .56rem; letter-spacing: .12em; white-space: nowrap; }
 .sidebar nav { display: grid; gap: .35rem; }
+.sidebar-navigation { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+.sidebar-plugin-section { margin-top: auto; padding-top: 1rem; }
+.sidebar-section-label { margin: 0 0 .35rem; padding: 0 .75rem; color: var(--faint-text-color); font-size: .64rem; font-weight: 800; letter-spacing: .12em; }
 .sidebar nav a, .disabled-nav-item { min-height: 2.85rem; display: flex; align-items: center; gap: .8rem; padding: .65rem .75rem; border-radius: .75rem; color: var(--muted-text-color); text-decoration: none; font-size: .91rem; font-weight: 600; transition: color var(--transition), background var(--transition); }
 .sidebar nav a:hover { color: var(--heading-color); background: var(--surface-background); }
 .sidebar nav a.active { color: var(--primary-soft-text); background: var(--primary-soft); }
@@ -429,7 +432,9 @@ input[aria-invalid="true"] { border-color: var(--danger-color); }
   .topbar { top: max(.65rem, env(safe-area-inset-top)); right: max(.75rem, env(safe-area-inset-right)); }
   .sidebar { position: fixed; inset: auto 0 0; z-index: 100; width: 100%; height: 4.6rem; display: block; padding: .4rem .55rem max(.4rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--border-color); border-right: 0; background: var(--surface-background); }
   .brand, .sidebar-footer, .sidebar > [role="alert"] { display: none; }
-  .sidebar nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: .1rem; }
+  .sidebar-navigation { display: grid; grid-template-columns: repeat(5, 1fr); gap: .1rem; }
+  .sidebar-navigation nav, .sidebar-plugin-section { display: contents; }
+  .sidebar-section-label { display: none; }
   .sidebar nav a, .disabled-nav-item { min-width: 0; min-height: 3.6rem; flex-direction: column; justify-content: center; gap: .2rem; padding: .3rem .1rem; font-size: .62rem; }
   .disabled-nav-item small { display: none; }
   .sidebar-editing { inset: 0; height: 100dvh; overflow: auto; padding: 1rem; }

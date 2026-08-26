@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -172,6 +172,35 @@ describe("SidebarEditor", () => {
     render(<MemoryRouter><Sidebar initialItems={navigation.map((item) => item.id === "vault-coming-soon" ? { ...item, id: "password-manager", path: "/password-vault", disabled: false } : item)} /></MemoryRouter>);
 
     expect(screen.getByRole("link", { name: "密码保险箱" })).toHaveAttribute("href", "/password-vault");
+  });
+
+  it("separates the plugin center from workspace navigation above settings", () => {
+    const items: NavigationItem[] = [
+      ...navigation.filter((item) => item.id !== "settings"),
+      { id: "plugins", label: "插件中心", path: "/plugins", position: 4, visible: true, disabled: false },
+      { id: "settings", label: "设置", path: "/settings", position: 5, visible: true, disabled: false }
+    ];
+
+    render(<MemoryRouter><Sidebar initialItems={items} /></MemoryRouter>);
+
+    const workspace = screen.getByRole("navigation", { name: "工作区" });
+    const plugins = screen.getByRole("navigation", { name: "插件" });
+    expect(within(workspace).queryByRole("link", { name: "插件中心" })).not.toBeInTheDocument();
+    expect(within(plugins).getByRole("link", { name: "插件中心" })).toHaveAttribute("href", "/plugins");
+    expect(screen.getByText("插件", { selector: ".sidebar-section-label" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute("href", "/settings");
+  });
+
+  it("hides the entire plugin navigation section when plugin center is hidden", () => {
+    const items: NavigationItem[] = [
+      ...navigation,
+      { id: "plugins", label: "插件中心", path: "/plugins", position: 5, visible: false, disabled: false }
+    ];
+
+    render(<MemoryRouter><Sidebar initialItems={items} /></MemoryRouter>);
+
+    expect(screen.queryByRole("navigation", { name: "插件" })).not.toBeInTheDocument();
+    expect(screen.queryByText("插件", { selector: ".sidebar-section-label" })).not.toBeInTheDocument();
   });
 
   it("preserves an inactive sparse row exactly and restores its position after re-enable", async () => {
