@@ -2,6 +2,7 @@ import type {
   AiConnection,
   AiConnectionCreate,
   AiConnectionUpdate,
+  AiOfficeOrder,
   ConnectionTestResult,
   AiPolishInput,
   AiPolishKind,
@@ -274,6 +275,12 @@ export const api = {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(appearance)
+  }),
+  getAiOfficeOrder: () => requestJson<AiOfficeOrder>("/preferences/ai-office-order"),
+  updateAiOfficeOrder: (order: AiOfficeOrder) => requestJson<AiOfficeOrder>("/preferences/ai-office-order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order)
   }),
   clearAiChatMessages: () => requestVoid("/ai-chat/messages", { method: "DELETE" }),
   getAiPolishPrompts: () => requestJson<AiPolishPrompt[]>("/ai-polish/prompts"),

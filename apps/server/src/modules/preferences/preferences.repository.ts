@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { AppearanceSettingsSchema, PluginManifestSchema, type AppearanceSettings, type DashboardLayout, type NavigationItem, type Theme } from "@workbench/contracts";
+import { AiOfficeOrderSchema, AppearanceSettingsSchema, PluginManifestSchema, type AiOfficeOrder, type AppearanceSettings, type DashboardLayout, type NavigationItem, type Theme } from "@workbench/contracts";
 
 const defaultLayout: DashboardLayout[] = [
   { moduleId: "profile", x: 0, y: 0, w: 4, h: 5, enabled: true },
@@ -154,6 +154,30 @@ export class PreferencesRepository {
     return appearance;
   }
 
+  public getAiOfficeOrder(): AiOfficeOrder {
+    const row = this.database.prepare("SELECT value FROM app_settings WHERE key = 'ai-office-order'").get() as { value: string } | undefined;
+    if (!row) return [];
+    try {
+      const parsed = AiOfficeOrderSchema.safeParse(JSON.parse(row.value));
+      if (!parsed.success) return [];
+      return this.filterEligibleAiOfficeOrder(parsed.data);
+    } catch {
+      return [];
+    }
+  }
+
+  public saveAiOfficeOrder(order: AiOfficeOrder): AiOfficeOrder {
+    const eligible = this.enabledInstalledPluginIds();
+    for (const item of order) {
+      if (!eligible.has(item.itemId)) throw new PreferencesValidationError();
+    }
+    this.database.prepare(`
+      INSERT INTO app_settings (key, value) VALUES ('ai-office-order', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(JSON.stringify(order));
+    return this.getAiOfficeOrder();
+  }
+
   private seed(): void {
     const seed = this.database.transaction(() => {
       const layoutSeeded = this.database.prepare("SELECT 1 FROM app_settings WHERE key = 'dashboard-v2-seeded'").get();
@@ -206,5 +230,21 @@ export class PreferencesRepository {
       }
     }
     return { dashboard, navigation };
+  }
+
+  private enabledInstalledPluginIds(): Set<string> {
+    return new Set((this.database.prepare(`
+      SELECT plugin_id
+      FROM installed_plugins
+      WHERE enabled = 1
+      ORDER BY plugin_id
+    `).all() as Array<{ plugin_id: string }>).map((row) => row.plugin_id));
+  }
+
+  private filterEligibleAiOfficeOrder(order: AiOfficeOrder): AiOfficeOrder {
+    const eligible = this.enabledInstalledPluginIds();
+    return order
+      .filter((item) => eligible.has(item.itemId))
+      .map((item, position) => ({ itemId: item.itemId, position }));
   }
 }

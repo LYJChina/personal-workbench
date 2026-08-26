@@ -564,6 +564,77 @@ describe("workspace preferences API", () => {
     expect(persisted.body).toEqual({ appearance: saved.body });
   });
 
+  it("round trips AI Office order for enabled installed plugins and persists it across app instances", async () => {
+    const app = createApp({ dataDir: tempDir });
+    const order = [{ itemId: "lyj.system.ai-polish", position: 0 }];
+
+    const saved = await request(app).put("/api/preferences/ai-office-order").send(order);
+    const current = await request(app).get("/api/preferences/ai-office-order");
+    const persisted = await request(createApp({ dataDir: tempDir })).get("/api/preferences/ai-office-order");
+
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual(order);
+    expect(current.body).toEqual(order);
+    expect(persisted.body).toEqual(order);
+  });
+
+  it("filters stale or disabled AI Office order items on read while keeping eligible order stable", async () => {
+    const app = createApp({ dataDir: tempDir });
+    const database = new Database(resolveAppPaths({ dataDir: tempDir }).databasePath);
+    database.prepare(`
+      INSERT INTO app_settings (key, value)
+      VALUES ('ai-office-order', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(JSON.stringify([
+      { itemId: "lyj.system.ai-chat", position: 0 },
+      { itemId: "lyj.system.ai-polish", position: 1 },
+      { itemId: "lyj.system.unknown", position: 2 }
+    ]));
+    database.close();
+
+    await request(app).put("/api/plugins/lyj.system.ai-chat/enabled").send({ enabled: false }).expect(200);
+    await request(app).get("/api/preferences/ai-office-order").expect(200, [
+      { itemId: "lyj.system.ai-polish", position: 0 }
+    ]);
+  });
+
+  it.each([
+    ["invalid", [{ itemId: "", position: 0 }]],
+    ["duplicate", [
+      { itemId: "lyj.system.ai-polish", position: 0 },
+      { itemId: "lyj.system.ai-polish", position: 1 }
+    ]],
+    ["non-contiguous", [
+      { itemId: "lyj.system.ai-polish", position: 1 }
+    ]],
+    ["uninstalled", [
+      { itemId: "lyj.system.unknown", position: 0 }
+    ]]
+  ])("rejects %s AI Office order payloads", async (_case, body) => {
+    const app = createApp({ dataDir: tempDir });
+    const before = readRawPreferenceRows(tempDir);
+
+    await request(app).put("/api/preferences/ai-office-order").send(body).expect(400, {
+      error: { message: "Preferences validation failed", code: "VALIDATION_ERROR" }
+    });
+
+    expect(readRawPreferenceRows(tempDir)).toEqual(before);
+  });
+
+  it("rejects disabled AI Office order plugin IDs", async () => {
+    const app = createApp({ dataDir: tempDir });
+    const before = readRawPreferenceRows(tempDir);
+
+    await request(app).put("/api/plugins/lyj.system.ai-polish/enabled").send({ enabled: false }).expect(200);
+    await request(app).put("/api/preferences/ai-office-order").send([
+      { itemId: "lyj.system.ai-polish", position: 0 }
+    ]).expect(400, {
+      error: { message: "Preferences validation failed", code: "VALIDATION_ERROR" }
+    });
+
+    expect(readRawPreferenceRows(tempDir)).toEqual(before);
+  });
+
   it("rejects invalid appearance without storing it", async () => {
     const app = createApp({ dataDir: tempDir });
     await request(app).put("/api/preferences/appearance").set("X-LYJ-Workbench-Request", "local-browser-v1").send({ skin: "evil", density: "compact", radius: "subtle", glass: false }).expect(400);

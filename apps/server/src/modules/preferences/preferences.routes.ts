@@ -1,5 +1,5 @@
 import { Router, type Response } from "express";
-import { AppearanceSettingsSchema, DashboardLayoutSchema, NavigationItemSchema, ThemePreferenceSchema } from "@workbench/contracts";
+import { AiOfficeOrderSchema, AppearanceSettingsSchema, DashboardLayoutSchema, NavigationItemSchema, ThemePreferenceSchema } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openOperationalDatabase } from "../../db/database.js";
 import { PreferencesRepository, PreferencesValidationError } from "./preferences.repository.js";
@@ -73,6 +73,18 @@ export function createPreferencesRouter(paths: AppPaths): Router {
     const parsed = AppearanceSettingsSchema.safeParse(request.body);
     if (!parsed.success) return validationError(response);
     return response.json(repositoryFor(response).saveAppearance(parsed.data));
+  });
+
+  router.get("/preferences/ai-office-order", (_request, response) => response.json(repositoryFor(response).getAiOfficeOrder()));
+  router.put("/preferences/ai-office-order", (request, response) => {
+    const parsed = AiOfficeOrderSchema.safeParse(request.body);
+    if (!parsed.success) return validationError(response);
+    try {
+      return response.json(repositoryFor(response).saveAiOfficeOrder(parsed.data));
+    } catch (error) {
+      if (error instanceof PreferencesValidationError) return validationError(response);
+      throw error;
+    }
   });
 
   return router;
