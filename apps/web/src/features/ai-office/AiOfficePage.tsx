@@ -32,7 +32,9 @@ function mergeLayout(tools: AiOfficeTool[], initialLayout: SurfaceLayoutItem[]):
 export function AiOfficePage({ initialLayout = emptyLayout, onSave, tools: toolsOverride }: AiOfficePageProps) {
   const { aiTools } = usePluginContributions();
   const tools = toolsOverride ?? aiTools;
-  const [layout, setLayout] = useState(() => mergeLayout(tools, initialLayout));
+  const [layout, setLayout] = useState(() => {
+    try { const stored = JSON.parse(localStorage.getItem("lyj.ai-office.layout") || "null"); return Array.isArray(stored) ? mergeLayout(tools, stored) : mergeLayout(tools, initialLayout); } catch { return mergeLayout(tools, initialLayout); }
+  });
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -41,7 +43,7 @@ export function AiOfficePage({ initialLayout = emptyLayout, onSave, tools: tools
 
   async function finishEditing() {
     setSaving(true);
-    try { await onSave?.(layout); setEditing(false); } finally { setSaving(false); }
+    try { if (onSave) await onSave(layout); else localStorage.setItem("lyj.ai-office.layout", JSON.stringify(layout)); setEditing(false); } finally { setSaving(false); }
   }
   return (
     <section className="ai-office-page">
