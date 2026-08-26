@@ -2,19 +2,14 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { DailyReportInputSchema, DailyReportUpdateSchema, type DailyReport } from "@workbench/contracts";
 import type { AppPaths } from "../../config/paths.js";
 import { openDatabase } from "../../db/database.js";
-import type { SecretStore } from "../../platform/secret-store.js";
-import { isAllowedDeepSeekUrl } from "../settings/settings.routes.js";
-import { SettingsRepository } from "../settings/settings.repository.js";
+import type { AiGateway } from "../ai-gateway/ai-gateway.js";
+import { sendAiGatewayError } from "../ai-gateway/ai-gateway.http.js";
 import { DailyReportRepository } from "./daily-report.repository.js";
-import { DeepSeekClientError, type DailyReportGenerator } from "./deepseek.client.js";
+import { buildDailyReportMessages } from "./daily-report.prompt.js";
 import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
 
-const deepSeekSecretName = "deepseek-api-key";
-
 export interface DailyReportRouterDependencies {
-  secretStore: SecretStore;
-  deepSeekClient: DailyReportGenerator;
-  allowLoopbackHttp?: boolean;
+  gateway: Pick<AiGateway, "complete">;
 }
 
 function errorResponse(response: Response, status: number, message: string, code: string): void {
@@ -27,27 +22,17 @@ function parseId(value: string): number | null {
   return Number.isSafeInteger(id) ? id : null;
 }
 
-function providerError(response: Response, error: unknown): void {
-  const category = error instanceof DeepSeekClientError ? error.category : "upstream";
-  if (category === "auth") return errorResponse(response, 401, "DeepSeek 身份验证失败", "DEEPSEEK_AUTH_FAILED");
-  if (category === "rate_limit") return errorResponse(response, 429, "DeepSeek 请求过于频繁，请稍后重试", "DEEPSEEK_RATE_LIMITED");
-  if (category === "timeout") return errorResponse(response, 504, "DeepSeek 请求超时，请稍后重试", "DEEPSEEK_TIMEOUT");
-  return errorResponse(response, 502, "DeepSeek 服务暂时不可用", "DEEPSEEK_UPSTREAM_ERROR");
-}
-
 export function createDailyReportRouter(paths: AppPaths, dependencies: DailyReportRouterDependencies): Router {
   const router = Router();
 
   router.use((request, response, next) => {
     const database = openDatabase(paths);
     response.locals.dailyReportRepository = new DailyReportRepository(database);
-    response.locals.settingsRepository = new SettingsRepository(database);
     response.locals.requestSignal = bindRequestLifecycle(request, response, () => database.close());
     next();
   });
 
   const reportsFor = (response: Response): DailyReportRepository => response.locals.dailyReportRepository as DailyReportRepository;
-  const settingsFor = (response: Response): SettingsRepository => response.locals.settingsRepository as SettingsRepository;
   const handle = (handler: (request: Request, response: Response) => Promise<void>) =>
     (request: Request, response: Response, next: NextFunction) => void handler(request, response).catch(next);
 
@@ -56,25 +41,15 @@ export function createDailyReportRouter(paths: AppPaths, dependencies: DailyRepo
     const parsed = DailyReportInputSchema.safeParse(request.body);
     if (!parsed.success) return errorResponse(response, 400, "Daily report validation failed", "VALIDATION_ERROR");
 
-    const apiKey = await dependencies.secretStore.readSecret(deepSeekSecretName);
-    if (!requestCanContinue(request, response, signal)) return;
-    const settings = settingsFor(response).getDeepSeekSettings(Boolean(apiKey));
-    if (!apiKey || !settings.model.trim() || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) {
-      return errorResponse(response, 409, "请先在设置中配置 DeepSeek", "DEEPSEEK_NOT_CONFIGURED");
-    }
-
     let generated: { content: string; model: string };
     try {
-      generated = await dependencies.deepSeekClient.generateDailyReport({
-        completed: parsed.data.completed,
-        risks: parsed.data.risks,
-        baseUrl: settings.baseUrl,
-        model: settings.model,
-        apiKey,
+      generated = await dependencies.gateway.complete({
+        messages: buildDailyReportMessages(parsed.data),
+        temperature: 0.2,
         signal
       });
     } catch (error) {
-      if (requestCanContinue(request, response, signal)) providerError(response, error);
+      if (requestCanContinue(request, response, signal)) sendAiGatewayError(response, error);
       return;
     }
 

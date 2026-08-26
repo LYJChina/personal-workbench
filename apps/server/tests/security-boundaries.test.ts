@@ -12,6 +12,7 @@ const mutationHeaderValue = "local-browser-v1";
 class EmptySecretStore implements SecretStore {
   public async protectSecret(): Promise<void> {}
   public async readSecret(): Promise<string | null> { return null; }
+  public async deleteSecret(): Promise<void> {}
 }
 
 describe("production-local security boundaries", () => {
@@ -71,11 +72,12 @@ describe("production-local security boundaries", () => {
     expect(apiRoute.body).toEqual({ error: { message: "Not Found", code: "NOT_FOUND" } });
   });
 
-  it("returns and logs only a sanitized 500 when a dependency throws secret-bearing text", async () => {
+  it("returns only a sanitized provider error when the AI secret store throws secret-bearing text", async () => {
     const sentinel = "Bearer deepseek-api-key=server-secret smtp-password=mail-secret";
     const secretStore: SecretStore = {
       protectSecret: async () => undefined,
-      readSecret: async () => { throw new Error(sentinel); }
+      readSecret: async () => { throw new Error(sentinel); },
+      deleteSecret: async () => undefined
     };
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const app = createApp({ dataDir: tempDir, secretStore });
@@ -85,8 +87,8 @@ describe("production-local security boundaries", () => {
       .set(mutationHeaderName, mutationHeaderValue)
       .send({ completed: "完成安全检查", risks: "" });
 
-    expect(response.status).toBe(500);
-    expect(response.body).toEqual({ error: { message: "Internal Server Error", code: "INTERNAL_ERROR" } });
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: { message: "模型服务暂时不可用，请稍后重试", code: "AI_UPSTREAM_ERROR" } });
     expect(JSON.stringify(response.body)).not.toMatch(/Bearer|api[_-]?key|smtp|server-secret|mail-secret/i);
     expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(/Bearer|api[_-]?key|smtp|server-secret|mail-secret/i);
   });

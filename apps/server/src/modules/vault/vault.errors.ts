@@ -19,3 +19,10 @@ export class VaultMetadataIntegrityError extends VaultIntegrityError {
     this.name = "VaultMetadataIntegrityError";
   }
 }
+
+export class InvalidRecoveryMaterialError extends Error {
+  public constructor() {
+    super("Invalid recovery material");
+    this.name = "InvalidRecoveryMaterialError";
+  }
+}

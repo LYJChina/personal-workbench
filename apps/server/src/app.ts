@@ -23,6 +23,7 @@ import { createAiPolishRouter } from "./modules/ai-polish/ai-polish.routes.js";
 import { createHolidayRouter } from "./modules/calendar/holiday.routes.js";
 import type { HolidayYearLoader } from "./modules/calendar/holiday.client.js";
 import { createAiChatRouter } from "./modules/ai-chat/ai-chat.routes.js";
+import { createAiPersonaRouter } from "./modules/ai-chat/ai-persona.routes.js";
 import { BackupService, type BackupExporter } from "./modules/backup/backup.service.js";
 import { createBackupRouter, type BackupReadStreamFactory } from "./modules/backup/backup.routes.js";
 import { enforceLocalRequestBoundary } from "./security/request-boundary.js";
@@ -235,6 +236,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   ]), createAiChatRouter(paths, {
     gateway: aiGateway
   }));
+  app.use("/api", pluginGuard("lyj.system.ai-chat", [
+    { path: "/ai-chat/persona", descendants: true }
+  ]), createAiPersonaRouter(paths));
   app.use("/api", pluginGuard("lyj.system.reminders", [
     { path: "/reminders", descendants: true },
     { path: "/reminder-attempts", descendants: true },

@@ -3,6 +3,7 @@ import { z } from "zod";
 export * from "./plugins";
 export * from "./surfaces";
 export * from "./password-manager";
+export * from "./ai-persona";
 
 export const WORKBENCH_MUTATION_HEADER_NAME = "X-LYJ-Workbench-Request";
 export const WORKBENCH_MUTATION_HEADER_VALUE = "local-browser-v1";
@@ -28,6 +29,45 @@ export const VaultSetupInputSchema = z.object({
 });
 
 export const VaultUnlockInputSchema = VaultSetupInputSchema;
+
+const MasterPasswordSchema = z.string().min(12).max(1024);
+
+export const VaultRecoveryStateSchema = z.enum(["disabled", "pending", "active"]);
+export const SmtpHealthSchema = z.enum(["unknown", "valid", "invalid", "unreachable"]);
+export const VaultRecoveryStatusSchema = z.object({
+  state: VaultRecoveryStateSchema,
+  maskedEmail: z.string().nullable(),
+  smtpHealth: SmtpHealthSchema,
+  checkedAt: z.string().datetime().nullable()
+}).strict();
+export const VaultChangePasswordInputSchema = z.object({
+  currentPassword: MasterPasswordSchema,
+  newPassword: MasterPasswordSchema
+}).strict();
+export const VaultRecoveryCodeResetInputSchema = z.object({
+  recoveryCode: z.string().min(20).max(200),
+  newPassword: MasterPasswordSchema
+}).strict();
+export const VaultSmtpResetInputSchema = z.object({
+  smtpEmail: z.string().email(),
+  smtpPassword: z.string().min(1).max(1024),
+  newPassword: MasterPasswordSchema
+}).strict();
+export const VaultConfirmRecoveryInputSchema = z.object({
+  confirmationCode: z.string().regex(/^\d{6}$/)
+}).strict();
+export const VaultEnrollmentInputSchema = z.object({
+  masterPassword: MasterPasswordSchema,
+  recoveryEmail: z.string().email(),
+  mail: z.object({
+    smtpHost: z.string().trim().min(1).max(253),
+    smtpPort: z.number().int().min(1).max(65535),
+    transportMode: z.enum(["starttls", "tls"]),
+    smtpUsername: z.string().trim().min(1).max(320),
+    fromAddress: z.string().email(),
+    smtpPassword: z.string().min(1).max(1024)
+  }).strict()
+}).strict();
 
 export const CustomFieldSchema = z.object({
   label: z.string().trim().min(1).max(100),
@@ -97,6 +137,28 @@ export const DeepSeekSettingsUpdateSchema = DeepSeekSettingsSchema.omit({ apiKey
   apiKey: z.string().max(10_000).optional()
 });
 
+export const AiProviderProtocolSchema = z.enum(["openai", "anthropic"]);
+export const AiConnectionIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
+
+const AiConnectionFieldsSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  protocol: AiProviderProtocolSchema,
+  baseUrl: z.string().trim().min(1).max(2_000),
+  model: z.string().trim().min(1).max(200)
+}).strict();
+
+export const AiConnectionSchema = AiConnectionFieldsSchema.extend({
+  id: AiConnectionIdSchema,
+  apiKeyConfigured: z.boolean(),
+  isDefault: z.boolean()
+}).strict();
+
+export const AiConnectionCreateSchema = AiConnectionFieldsSchema.extend({
+  apiKey: z.string().max(10_000).optional()
+}).strict();
+
+export const AiConnectionUpdateSchema = AiConnectionCreateSchema;
+
 export const MailTransportModeSchema = z.enum(["starttls", "tls"]);
 export const MailSettingsSchema = z.object({
   smtpHost: z.string().trim().max(253),
@@ -110,7 +172,8 @@ export const MailSettingsSchema = z.object({
 export const MailSettingsUpdateSchema = MailSettingsSchema.omit({ smtpPasswordConfigured: true }).extend({
   smtpHost: z.string().trim().min(1).max(253),
   fromAddress: z.string().trim().email().max(500),
-  smtpPassword: z.string().max(10_000).optional()
+  smtpPassword: z.string().max(10_000).optional(),
+  currentPassword: z.string().min(12).max(1024).optional()
 });
 
 export const SettingsResponseSchema = z.object({
@@ -118,7 +181,16 @@ export const SettingsResponseSchema = z.object({
   mail: MailSettingsSchema
 });
 
-export const ConnectionTestStatusSchema = z.enum(["success", "auth_failure", "timeout", "unreachable_host"]);
+export const ConnectionTestStatusSchema = z.enum([
+  "success",
+  "auth_failure",
+  "billing_failure",
+  "invalid_request",
+  "rate_limit",
+  "timeout",
+  "unreachable_host",
+  "provider_error"
+]);
 export const ConnectionTestResultSchema = z.object({
   status: ConnectionTestStatusSchema,
   message: z.string()
@@ -295,6 +367,14 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type VaultStatus = z.infer<typeof VaultStatusSchema>;
 export type VaultSetupInput = z.infer<typeof VaultSetupInputSchema>;
 export type VaultUnlockInput = z.infer<typeof VaultUnlockInputSchema>;
+export type VaultRecoveryState = z.infer<typeof VaultRecoveryStateSchema>;
+export type SmtpHealth = z.infer<typeof SmtpHealthSchema>;
+export type VaultRecoveryStatus = z.infer<typeof VaultRecoveryStatusSchema>;
+export type VaultChangePasswordInput = z.infer<typeof VaultChangePasswordInputSchema>;
+export type VaultRecoveryCodeResetInput = z.infer<typeof VaultRecoveryCodeResetInputSchema>;
+export type VaultSmtpResetInput = z.infer<typeof VaultSmtpResetInputSchema>;
+export type VaultConfirmRecoveryInput = z.infer<typeof VaultConfirmRecoveryInputSchema>;
+export type VaultEnrollmentInput = z.infer<typeof VaultEnrollmentInputSchema>;
 export type CustomField = z.infer<typeof CustomFieldSchema>;
 export type ProfileResponse = z.infer<typeof ProfileSchema>;
 export type ProfileUpdate = z.infer<typeof ProfileUpdateSchema>;
@@ -307,6 +387,11 @@ export type AppearanceSettings = z.infer<typeof AppearanceSettingsSchema>;
 export type AppearancePreference = z.infer<typeof AppearancePreferenceSchema>;
 export type DeepSeekSettings = z.infer<typeof DeepSeekSettingsSchema>;
 export type DeepSeekSettingsUpdate = z.infer<typeof DeepSeekSettingsUpdateSchema>;
+export type AiProviderProtocol = z.infer<typeof AiProviderProtocolSchema>;
+export type AiConnectionId = z.infer<typeof AiConnectionIdSchema>;
+export type AiConnection = z.infer<typeof AiConnectionSchema>;
+export type AiConnectionCreate = z.infer<typeof AiConnectionCreateSchema>;
+export type AiConnectionUpdate = z.infer<typeof AiConnectionUpdateSchema>;
 export type MailTransportMode = z.infer<typeof MailTransportModeSchema>;
 export type MailSettings = z.infer<typeof MailSettingsSchema>;
 export type MailSettingsUpdate = z.infer<typeof MailSettingsUpdateSchema>;

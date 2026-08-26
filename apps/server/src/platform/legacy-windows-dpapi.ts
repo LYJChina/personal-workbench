@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { lstat, open, realpath } from "node:fs/promises";
+import { lstat, open, realpath, unlink } from "node:fs/promises";
 import { constants, type Stats } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import type { SecretStore } from "./secret-store.js";
@@ -316,6 +316,16 @@ export class WindowsDpapiSecretStore implements SecretStore {
     } finally {
       if (protectedBytes) protectedBytes.fill(0);
       if (handle) await handle.close().catch(() => undefined);
+    }
+  }
+
+  public async deleteSecret(name: string): Promise<void> {
+    validateSecretName(name);
+    requireWindows(this.platform);
+    try {
+      await unlink(join(this.secretsDir, `${name}.bin`));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Windows DPAPI operation failed");
     }
   }
 }

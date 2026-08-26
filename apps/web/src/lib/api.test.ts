@@ -48,6 +48,53 @@ describe("backup download client", () => {
     }));
   });
 
+  it("calls every AI connection management endpoint without exposing local secret names", async () => {
+    const connection = {
+      id: "claude-main",
+      name: "Claude",
+      protocol: "anthropic" as const,
+      baseUrl: "https://api.anthropic.com/v1",
+      model: "claude-sonnet",
+      apiKeyConfigured: true,
+      isDefault: false
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([connection]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(connection), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...connection, model: "claude-opus" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...connection, isDefault: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "success", message: "连接成功" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await api.getAiConnections(controller.signal);
+    await api.createAiConnection({
+      name: connection.name,
+      protocol: connection.protocol,
+      baseUrl: connection.baseUrl,
+      model: connection.model,
+      apiKey: "new-key"
+    }, controller.signal);
+    await api.updateAiConnection(connection.id, {
+      name: connection.name,
+      protocol: connection.protocol,
+      baseUrl: connection.baseUrl,
+      model: "claude-opus"
+    }, controller.signal);
+    await api.setDefaultAiConnection(connection.id, controller.signal);
+    await api.testAiConnection(connection.id, controller.signal);
+    await api.deleteAiConnection(connection.id, controller.signal);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/settings/ai-connections", { signal: controller.signal });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/settings/ai-connections", expect.objectContaining({ method: "POST", signal: controller.signal }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/settings/ai-connections/claude-main", expect.objectContaining({ method: "PUT", signal: controller.signal }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/settings/ai-connections/claude-main/default", expect.objectContaining({ method: "PUT", signal: controller.signal }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/settings/ai-connections/claude-main/test", expect.objectContaining({ method: "POST", signal: controller.signal }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/settings/ai-connections/claude-main", expect.objectContaining({ method: "DELETE", signal: controller.signal }));
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("secretName");
+  });
+
   it("calls the plugin management endpoints with abort signals and mutation provenance", async () => {
     const plugin = {
       manifest: {

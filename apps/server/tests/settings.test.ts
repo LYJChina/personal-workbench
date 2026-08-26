@@ -22,6 +22,7 @@ class MemorySecretStore implements SecretStore {
   public async readSecret(name: string): Promise<string | null> {
     return this.secrets.get(name) ?? null;
   }
+  public async deleteSecret(name: string): Promise<void> { this.secrets.delete(name); }
 }
 
 async function listen(server: Server): Promise<number> {
@@ -92,6 +93,83 @@ describe("secure settings API", () => {
     expect(await secretStore.readSecret("deepseek-api-key")).toBe("first-key");
     expect(await secretStore.readSecret("smtp-password")).toBe("first-password");
     expect(secretStore.protectedValues).toHaveLength(2);
+  });
+
+  it("keeps the legacy DeepSeek settings endpoint synchronized with the migrated AI connection", async () => {
+    const app = createApp({ dataDir: tempDir, secretStore });
+
+    await request(app).put("/api/settings/deepseek").send({
+      baseUrl: "https://gateway.example.com/v1",
+      model: "compatible-model",
+      apiKey: "legacy-key"
+    }).expect(200);
+
+    const connections = await request(app).get("/api/settings/ai-connections").expect(200);
+    expect(connections.body[0]).toMatchObject({
+      id: "legacy-deepseek",
+      baseUrl: "https://gateway.example.com/v1",
+      model: "compatible-model",
+      apiKeyConfigured: true
+    });
+
+    await request(app).put("/api/settings/ai-connections/legacy-deepseek").send({
+      name: "DeepSeek Compatible",
+      protocol: "openai",
+      baseUrl: "https://second.example.com/v1",
+      model: "second-model"
+    }).expect(200);
+
+    const legacySettings = await request(app).get("/api/settings").expect(200);
+    expect(legacySettings.body.deepseek).toEqual({
+      baseUrl: "https://second.example.com/v1",
+      model: "second-model",
+      apiKeyConfigured: true
+    });
+  });
+
+  it("routes the legacy connection test through the migrated connection protocol", async () => {
+    const aiConnectionTester = vi.fn().mockResolvedValue(undefined);
+    const app = createApp({ dataDir: tempDir, secretStore, aiConnectionTester });
+    await request(app).put("/api/settings/deepseek").send({
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      apiKey: "legacy-key"
+    }).expect(200);
+    await request(app).put("/api/settings/ai-connections/legacy-deepseek").send({
+      name: "Claude Legacy",
+      protocol: "anthropic",
+      baseUrl: "https://api.anthropic.com/v1",
+      model: "claude-model"
+    }).expect(200);
+
+    await request(app).post("/api/settings/deepseek/test").expect(200);
+
+    expect(aiConnectionTester).toHaveBeenCalledWith("legacy-deepseek", expect.any(AbortSignal));
+  });
+
+  it("returns not found instead of silently saving after the legacy connection was deleted", async () => {
+    const app = createApp({ dataDir: tempDir, secretStore });
+    const created = await request(app).post("/api/settings/ai-connections").send({
+      name: "Claude",
+      protocol: "anthropic",
+      baseUrl: "https://api.anthropic.com/v1",
+      model: "claude-model",
+      apiKey: "claude-key"
+    }).expect(201);
+    await request(app).put(`/api/settings/ai-connections/${created.body.id}/default`).send({}).expect(200);
+    await request(app).delete("/api/settings/ai-connections/legacy-deepseek").expect(204);
+
+    const response = await request(app).put("/api/settings/deepseek").send({
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      apiKey: "must-not-be-stored"
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      error: { message: "Legacy DeepSeek connection not found", code: "AI_CONNECTION_NOT_FOUND" }
+    });
+    expect(await secretStore.readSecret("deepseek-api-key")).toBeNull();
   });
 
   it("persists non-secret settings across app instances without exposing SMTP credentials", async () => {
@@ -217,7 +295,7 @@ describe("secure settings API", () => {
     [undefined, { status: "success", message: "连接成功" }],
     [new ConnectionTestFailure("auth_failure"), { status: "auth_failure", message: "身份验证失败，请检查凭据" }],
     [new ConnectionTestFailure("timeout"), { status: "timeout", message: "连接超时，请稍后重试" }],
-    [new ConnectionTestFailure("unreachable_host"), { status: "unreachable_host", message: "无法连接到服务器" }]
+    [new ConnectionTestFailure("unreachable_host"), { status: "unreachable_host", message: "无法连接到服务商服务器，请检查网络和 API 地址" }]
   ])("maps DeepSeek connection outcomes to sanitized responses", async (failure, expected) => {
     const tester = vi.fn(async (_input: ProviderConnectionInput) => {
       if (failure) throw failure;
@@ -236,7 +314,7 @@ describe("secure settings API", () => {
     [undefined, { status: "success", message: "连接成功" }],
     [new ConnectionTestFailure("auth_failure"), { status: "auth_failure", message: "身份验证失败，请检查凭据" }],
     [new ConnectionTestFailure("timeout"), { status: "timeout", message: "连接超时，请稍后重试" }],
-    [new ConnectionTestFailure("unreachable_host"), { status: "unreachable_host", message: "无法连接到服务器" }]
+    [new ConnectionTestFailure("unreachable_host"), { status: "unreachable_host", message: "无法连接到服务商服务器，请检查网络和 API 地址" }]
   ])("maps mail connection outcomes to sanitized responses", async (failure, expected) => {
     const tester = vi.fn(async (_input: MailConnectionInput) => {
       if (failure) throw failure;

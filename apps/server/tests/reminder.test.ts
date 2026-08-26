@@ -25,6 +25,7 @@ class MemorySecretStore implements SecretStore {
     this.reads += 1;
     return this.secrets.get(name) ?? null;
   }
+  public async deleteSecret(name: string): Promise<void> { this.secrets.delete(name); }
 }
 
 class RecordingChannel implements NotificationChannel {
@@ -250,7 +251,8 @@ describe("manual outbound check-in email", () => {
     await request(app).post("/api/vault/setup").send({ masterPassword: "correct horse battery staple" }).expect(201);
     await request(app).put("/api/settings/mail").send({
       smtpHost: "smtp.example.com", smtpPort: 587, transportMode: "starttls",
-      smtpUsername: "sender@example.com", fromAddress: "sender@example.com", smtpPassword: "secret-password"
+      smtpUsername: "sender@example.com", fromAddress: "sender@example.com", smtpPassword: "secret-password",
+      currentPassword: "correct horse battery staple"
     }).expect(200);
     const created = await request(app).post("/api/reminders").send({
       name: "完整性测试", enabled: true, lifecycle: "once", scheduleType: "once",

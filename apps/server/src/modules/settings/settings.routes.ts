@@ -7,7 +7,8 @@ import {
   type ConnectionTestResult,
   type ConnectionTestStatus,
   type DeepSeekSettings,
-  type MailSettings
+  type MailSettings,
+  type MailSettingsUpdate
 } from "@workbench/contracts";
 import nodemailer from "nodemailer";
 import type { AppPaths } from "../../config/paths.js";
@@ -15,6 +16,7 @@ import { openDatabase } from "../../db/database.js";
 import type { SecretStore } from "../../platform/secret-store.js";
 import { SettingsRepository } from "./settings.repository.js";
 import { bindRequestLifecycle, requestCanContinue } from "../../http/request-lifecycle.js";
+import { AiGatewayError } from "../ai-gateway/ai-gateway.types.js";
 
 const DEEPSEEK_SECRET_NAME = "deepseek-api-key";
 const SMTP_SECRET_NAME = "smtp-password";
@@ -54,13 +56,19 @@ export interface SettingsRouterDependencies {
   deepSeekConnectionTester?: DeepSeekConnectionTester;
   mailConnectionTester?: MailConnectionTester;
   connectionTimeoutMs?: number;
+  aiConnectionTester?: (id: string, signal: AbortSignal) => Promise<void>;
+  smtpCredentialUpdater?: (input: MailSettingsUpdate & { smtpPassword: string; currentPassword: string }) => Promise<void>;
 }
 
 const connectionMessages: Record<ConnectionTestStatus, string> = {
   success: "连接成功",
   auth_failure: "身份验证失败，请检查凭据",
+  billing_failure: "服务商账户余额不足或计费不可用",
+  invalid_request: "服务商拒绝了请求，请检查模型名称和 API 地址",
+  rate_limit: "请求过于频繁或额度已受限，请稍后重试",
   timeout: "连接超时，请稍后重试",
-  unreachable_host: "无法连接到服务器"
+  unreachable_host: "无法连接到服务商服务器，请检查网络和 API 地址",
+  provider_error: "服务商暂时异常，请稍后重试"
 };
 
 function result(status: ConnectionTestStatus): ConnectionTestResult {
@@ -94,6 +102,15 @@ export function isAllowedDeepSeekUrl(value: string, allowLoopbackHttp: boolean):
 }
 
 function categoryFor(error: unknown): Exclude<ConnectionTestStatus, "success"> {
+  if (error instanceof AiGatewayError) {
+    if (error.category === "auth") return "auth_failure";
+    if (error.category === "billing") return "billing_failure";
+    if (error.category === "invalid_request") return "invalid_request";
+    if (error.category === "rate_limit") return "rate_limit";
+    if (error.category === "timeout") return "timeout";
+    if (error.category === "network") return "unreachable_host";
+    return "provider_error";
+  }
   if (error instanceof ConnectionTestFailure) return error.category;
   const candidate = error as { name?: string; code?: string } | null;
   if (candidate?.name === "AbortError" || candidate?.code === "ETIMEDOUT") return "timeout";
@@ -189,6 +206,10 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
     const parsed = DeepSeekSettingsUpdateSchema.safeParse(request.body);
     if (!parsed.success) return validationError(response);
     if (request.body?.baseUrl !== parsed.data.baseUrl || !isAllowedDeepSeekUrl(parsed.data.baseUrl, Boolean(dependencies.allowLoopbackHttp))) return validationError(response);
+    if (!repositoryFor(response).hasLegacyDeepSeekConnection()) {
+      response.status(404).json({ error: { message: "Legacy DeepSeek connection not found", code: "AI_CONNECTION_NOT_FOUND" } });
+      return;
+    }
     const replacement = parsed.data.apiKey?.trim();
     if (replacement) await dependencies.secretStore.protectSecret(DEEPSEEK_SECRET_NAME, replacement);
     if (!requestCanContinue(request, response, signal)) return;
@@ -201,7 +222,10 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
     const parsed = MailSettingsUpdateSchema.safeParse(request.body);
     if (!parsed.success) return validationError(response);
     const replacement = parsed.data.smtpPassword?.trim();
-    if (replacement) await dependencies.secretStore.protectSecret(SMTP_SECRET_NAME, replacement);
+    if (replacement && dependencies.smtpCredentialUpdater) {
+      if (!parsed.data.currentPassword) return validationError(response);
+      await dependencies.smtpCredentialUpdater({ ...parsed.data, smtpPassword: replacement, currentPassword: parsed.data.currentPassword });
+    } else if (replacement) await dependencies.secretStore.protectSecret(SMTP_SECRET_NAME, replacement);
     if (!requestCanContinue(request, response, signal)) return;
     const configured = Boolean(replacement || await dependencies.secretStore.readSecret(SMTP_SECRET_NAME));
     if (requestCanContinue(request, response, signal)) response.json(repositoryFor(response).saveMailSettings(parsed.data, configured));
@@ -214,7 +238,8 @@ export function createSettingsRouter(paths: AppPaths, dependencies: SettingsRout
     const settings: DeepSeekSettings = repositoryFor(response).getDeepSeekSettings(Boolean(apiKey));
     if (!apiKey || !isAllowedDeepSeekUrl(settings.baseUrl, Boolean(dependencies.allowLoopbackHttp))) return notConfigured(response);
     try {
-      await providerTester({ baseUrl: settings.baseUrl, model: settings.model, apiKey, timeoutMs, signal });
+      if (dependencies.aiConnectionTester) await dependencies.aiConnectionTester("legacy-deepseek", signal);
+      else await providerTester({ baseUrl: settings.baseUrl, model: settings.model, apiKey, timeoutMs, signal });
       if (requestCanContinue(request, response, signal)) response.json(result("success"));
     } catch (error) {
       if (requestCanContinue(request, response, signal)) response.json(result(categoryFor(error)));

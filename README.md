@@ -42,13 +42,15 @@ The database contains profile fields and the profile photo, preferences, setting
 
 ## Local vault and provider settings
 
-On first use, create a master password in the vault screen. On later starts, unlock the vault with that password before using the protected application. DeepSeek API keys and SMTP passwords are encrypted inside `workbench.sqlite`; plaintext secret values are never returned to the browser. Leaving a secret input blank in Settings preserves its stored value.
+On first use, create a master password in the vault screen. On later starts, unlock the vault with that password before using the protected application. Model-service API keys and SMTP passwords are encrypted inside `workbench.sqlite`; plaintext secret values are never returned to the browser. Leaving a secret input blank in Settings preserves its stored value.
 
 The encrypted vault is portable between Windows and macOS. A restored database requires the same master password. Losing that password means the encrypted secrets cannot be recovered.
 
 Older Windows releases stored secrets as account-bound DPAPI files. When those files are detected under the original Windows account, first-time vault setup can perform a one-time import through the one-time Windows DPAPI adapter into the portable vault. This is the only supported DPAPI path: normal storage, unlock, backup, and use do not depend on DPAPI or PowerShell. Complete the import on the original Windows account before moving the database to another computer.
 
-Open **设置 → DeepSeek** to configure the HTTPS API address, model, and API key, and use **测试 DeepSeek 连接** when you explicitly want a connection test. Provider content is sent only when you invoke an AI action.
+Open **设置 → 模型服务** to manage one or more AI connections. Choose **OpenAI 兼容** for OpenAI, DeepSeek, or another service exposing `/chat/completions`; choose **Anthropic 原生** for Claude's `/messages` API. Each connection has its own HTTPS API address, model, and encrypted API key. Use **设为默认** to choose the connection shared by AI chat, polishing, and daily reports, and use **测试连接** when you explicitly want a provider request. Provider content is sent only when you invoke an AI action.
+
+Existing installations upgrade without copying or decrypting their key: the former DeepSeek URL and model become the default `legacy-deepseek` OpenAI-compatible connection, which continues to reference the existing encrypted `deepseek-api-key`. New connections use independent encrypted vault entries. The same connection data and request paths are used on Windows and macOS.
 
 Open **设置 → 邮件通知** to retain SMTP host, port, transport mode (`STARTTLS` or `TLS`), username, sender address, and password. Email is sent only when you explicitly use a reminder's manual **测试邮件** action. Installation, build, startup, and reminder schedules do not send email automatically.
 
@@ -105,3 +107,12 @@ $env:LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION = "1"
 pnpm --filter @workbench/server exec vitest --configLoader runner run tests/dpapi.test.ts --maxWorkers=1 --fileParallelism=false
 Remove-Item Env:LYJ_WORKBENCH_RUN_DPAPI_INTEGRATION
 ```
+# 本地保险库与密码恢复
+
+首次创建工作台时需要设置独立主密码，并配置 SMTP 邮箱、邮箱授权码和恢复邮箱。系统会先验证 SMTP，再把一次性长恢复码和 6 位确认码发送到恢复邮箱；长恢复码不会出现在浏览器响应、日志或 SQLite 明文中。
+
+支持 Gmail、QQ 邮箱、网易 163 和自定义 SMTP 预设，预设值均可修改，最终以实际连接测试为准。Outlook.com 当前要求 OAuth2/现代认证，因此本阶段不提供 Outlook“邮箱授权码”预设。
+
+忘记主密码时可使用邮件中的一次性恢复码，或仍然有效且未更换的 SMTP 邮箱与授权码重设独立主密码。恢复码成功使用后立即失效；新恢复邮件发送成功后才会激活新码。SMTP 授权码更新时，设置页要求再次输入当前主密码，并同步更新 SMTP 恢复密钥。
+
+保险库使用可迁移的信封加密结构。复制完整 SQLite 数据库到 Windows 或 macOS 后，仍可使用主密码、有效恢复码或未变更的 SMTP 凭据恢复。插件无权读取保险库密钥包装、恢复元数据或秘密表。

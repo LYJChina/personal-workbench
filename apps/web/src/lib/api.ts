@@ -1,4 +1,7 @@
 import type {
+  AiConnection,
+  AiConnectionCreate,
+  AiConnectionUpdate,
   ConnectionTestResult,
   AiPolishInput,
   AiPolishKind,
@@ -7,6 +10,8 @@ import type {
   AiSystemPromptInput,
   AiSystemPromptResult,
   AiChatMessage,
+  AiPersonaSettings,
+  AiPersonaSettingsUpdate,
   DashboardLayout,
   DailyReport,
   DailyReportInput,
@@ -132,12 +137,28 @@ export const api = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ masterPassword })
   }),
+  enrollVault: (input: import("@workbench/contracts").VaultEnrollmentInput) => requestJson<import("@workbench/contracts").VaultRecoveryStatus>("/vault/enroll", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
+  }),
   unlockVault: (masterPassword: string) => requestVoid("/vault/unlock", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ masterPassword })
   }),
   lockVault: () => requestVoid("/vault/lock", { method: "POST" }),
+  getVaultRecoveryStatus: () => requestJson<import("@workbench/contracts").VaultRecoveryStatus>("/vault/recovery/status"),
+  changeVaultPassword: (currentPassword: string, newPassword: string) => requestVoid("/vault/password", {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword })
+  }),
+  resetVaultWithRecoveryCode: (recoveryCode: string, newPassword: string) => requestVoid("/vault/recovery/code-reset", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recoveryCode, newPassword })
+  }),
+  resetVaultWithSmtp: (smtpEmail: string, smtpPassword: string, newPassword: string) => requestVoid("/vault/recovery/smtp-reset", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ smtpEmail, smtpPassword, newPassword })
+  }),
+  confirmVaultRecovery: (confirmationCode: string) => requestVoid("/vault/recovery/confirm", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmationCode })
+  }),
   getProfile: () => requestJson<ProfileResponse>("/profile"),
   updateProfile: (profile: ProfileUpdate) => requestJson<ProfileResponse>("/profile", {
     method: "PUT",
@@ -168,6 +189,40 @@ export const api = {
     body: JSON.stringify({ theme })
   }),
   getSettings: () => requestJson<SettingsResponse>("/settings"),
+  getAiConnections: (signal?: AbortSignal) => requestJson<AiConnection[]>(
+    "/settings/ai-connections",
+    signal ? { signal } : undefined
+  ),
+  createAiConnection: (connection: AiConnectionCreate, signal?: AbortSignal) => requestJson<AiConnection>(
+    "/settings/ai-connections",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(connection),
+      ...(signal ? { signal } : {})
+    }
+  ),
+  updateAiConnection: (id: string, connection: AiConnectionUpdate, signal?: AbortSignal) => requestJson<AiConnection>(
+    `/settings/ai-connections/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(connection),
+      ...(signal ? { signal } : {})
+    }
+  ),
+  setDefaultAiConnection: (id: string, signal?: AbortSignal) => requestJson<AiConnection>(
+    `/settings/ai-connections/${encodeURIComponent(id)}/default`,
+    { method: "PUT", ...(signal ? { signal } : {}) }
+  ),
+  testAiConnection: (id: string, signal?: AbortSignal) => requestJson<ConnectionTestResult>(
+    `/settings/ai-connections/${encodeURIComponent(id)}/test`,
+    { method: "POST", ...(signal ? { signal } : {}) }
+  ),
+  deleteAiConnection: (id: string, signal?: AbortSignal) => requestVoid(
+    `/settings/ai-connections/${encodeURIComponent(id)}`,
+    { method: "DELETE", ...(signal ? { signal } : {}) }
+  ),
   updateDeepSeekSettings: (settings: DeepSeekSettingsUpdate) => requestJson<DeepSeekSettings>("/settings/deepseek", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -208,6 +263,10 @@ export const api = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content })
+  }),
+  getAiPersona: () => requestJson<AiPersonaSettings>("/ai-chat/persona"),
+  updateAiPersona: (settings: AiPersonaSettingsUpdate) => requestJson<AiPersonaSettings>("/ai-chat/persona", {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings)
   }),
   getAppearance: () => requestJson<AppearancePreference>("/preferences/appearance"),
   updateAppearance: (appearance: AppearanceSettings) => requestJson<AppearanceSettings>("/preferences/appearance", {

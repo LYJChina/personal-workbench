@@ -12,7 +12,8 @@ import {
   VaultMetadataIntegrityError,
   VaultService
 } from "../src/modules/vault/vault.service";
-import { decryptVaultValue, encryptVaultValue } from "../src/modules/vault/vault.crypto";
+import { decryptVaultValue, deriveVaultKey, encryptVaultValue, secretAuthenticatedData, VAULT_VERIFIER, VAULT_VERIFIER_AAD } from "../src/modules/vault/vault.crypto";
+import { VaultRepository } from "../src/modules/vault/vault.repository";
 
 const testScrypt = { n: 16, r: 1, p: 1, maxmem: 128 * 1024 * 1024 };
 
@@ -42,6 +43,8 @@ describe("portable encrypted vault", () => {
     expect(await vault.readSecret("deepseek-api-key")).toBe("sk-initial-plaintext");
     expect(database.prepare("SELECT COUNT(*) AS count FROM vault_metadata").get()).toEqual({ count: 1 });
     expect(database.prepare("SELECT COUNT(*) AS count FROM vault_secrets").get()).toEqual({ count: 2 });
+    expect(database.prepare("SELECT format_version FROM vault_metadata WHERE id = 1").pluck().get()).toBe(2);
+    expect(database.prepare("SELECT kind FROM vault_key_wrappers WHERE active = 1").pluck().all()).toEqual(["password"]);
     const metadata = database.prepare("SELECT salt, verifier_nonce, verifier_tag FROM vault_metadata WHERE id = 1").get() as Record<string, Buffer>;
     expect(metadata.salt).toHaveLength(16);
     expect(metadata.verifier_nonce).toHaveLength(12);
@@ -159,6 +162,53 @@ describe("portable encrypted vault", () => {
     database.close();
   });
 
+  it("migrates a legacy vault to envelope encryption on its first successful unlock", async () => {
+    const { database } = await createVault();
+    const salt = Buffer.alloc(16, 7);
+    const legacyKey = await deriveVaultKey("legacy-master-password", { salt, ...testScrypt });
+    const secret = Buffer.from("legacy-secret-value");
+    new VaultRepository(database).initialize({
+      formatVersion: 1,
+      salt,
+      verifier: encryptVaultValue(legacyKey, VAULT_VERIFIER, VAULT_VERIFIER_AAD),
+      scrypt: testScrypt
+    }, new Map([["legacy-secret", encryptVaultValue(legacyKey, secret, secretAuthenticatedData("legacy-secret"))]]));
+    secret.fill(0);
+    legacyKey.fill(0);
+
+    const vault = new VaultService(database, { scrypt: testScrypt });
+    await vault.unlock("legacy-master-password");
+
+    expect(database.prepare("SELECT format_version FROM vault_metadata WHERE id = 1").pluck().get()).toBe(2);
+    expect(database.prepare("SELECT kind FROM vault_key_wrappers WHERE active = 1").pluck().all()).toEqual(["password"]);
+    expect(await vault.readSecret("legacy-secret")).toBe("legacy-secret-value");
+    database.close();
+  });
+
+  it("rolls back every legacy migration write when re-encryption cannot be stored", async () => {
+    const { database } = await createVault();
+    const salt = Buffer.alloc(16, 9);
+    const legacyKey = await deriveVaultKey("legacy-master-password", { salt, ...testScrypt });
+    const plaintext = Buffer.from("still-readable-after-rollback");
+    new VaultRepository(database).initialize({
+      formatVersion: 1,
+      salt,
+      verifier: encryptVaultValue(legacyKey, VAULT_VERIFIER, VAULT_VERIFIER_AAD),
+      scrypt: testScrypt
+    }, new Map([["legacy-secret", encryptVaultValue(legacyKey, plaintext, secretAuthenticatedData("legacy-secret"))]]));
+    const originalCiphertext = database.prepare("SELECT ciphertext FROM vault_secrets WHERE name = 'legacy-secret'").pluck().get() as Buffer;
+    database.exec("CREATE TRIGGER reject_migrated_secret BEFORE INSERT ON vault_secrets BEGIN SELECT RAISE(ABORT, 'controlled migration failure'); END");
+    plaintext.fill(0);
+    legacyKey.fill(0);
+
+    await expect(new VaultService(database, { scrypt: testScrypt }).unlock("legacy-master-password")).rejects.toThrow();
+
+    expect(database.prepare("SELECT format_version FROM vault_metadata WHERE id = 1").pluck().get()).toBe(1);
+    expect(database.prepare("SELECT ciphertext FROM vault_secrets WHERE name = 'legacy-secret'").pluck().get()).toEqual(originalCiphertext);
+    expect(database.prepare("SELECT COUNT(*) FROM vault_key_wrappers").pluck().get()).toBe(0);
+    database.close();
+  });
+
   it("replaces a secret and uses a unique nonce every time", async () => {
     const { database, vault } = await createVault();
     await vault.setup("portable-master-password", {});
@@ -168,6 +218,18 @@ describe("portable encrypted vault", () => {
     const second = database.prepare("SELECT nonce FROM vault_secrets WHERE name = ?").get("token") as { nonce: Buffer };
     expect(second.nonce.equals(first.nonce)).toBe(false);
     expect(await vault.readSecret("token")).toBe("same-value");
+    database.close();
+  });
+
+  it("deletes one encrypted secret without affecting the others", async () => {
+    const { database, vault } = await createVault();
+    await vault.setup("portable-master-password", { removable: "one", retained: "two" });
+
+    await vault.deleteSecret("removable");
+
+    expect(await vault.readSecret("removable")).toBeNull();
+    expect(await vault.readSecret("retained")).toBe("two");
+    expect(database.prepare("SELECT name FROM vault_secrets ORDER BY name").pluck().all()).toEqual(["retained"]);
     database.close();
   });
 

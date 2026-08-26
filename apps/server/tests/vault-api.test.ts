@@ -42,6 +42,36 @@ describe("vault HTTP API", () => {
     await request(app).get("/api/vault/status").expect(200, { configured: true, unlocked: true });
   });
 
+  it("changes the master password and exposes only sanitized recovery status", async () => {
+    const { app } = await createTestApp();
+    await request(app).post("/api/vault/setup").send({ masterPassword }).expect(201);
+    await request(app).get("/api/vault/recovery/status").expect(200, {
+      state: "disabled", maskedEmail: null, smtpHealth: "unknown", checkedAt: null
+    });
+    await request(app).put("/api/vault/password").send({
+      currentPassword: masterPassword,
+      newPassword: "replacement horse battery staple"
+    }).expect(204);
+    await request(app).post("/api/vault/lock").expect(204);
+    await request(app).post("/api/vault/unlock").send({ masterPassword }).expect(401);
+    await request(app).post("/api/vault/unlock").send({ masterPassword: "replacement horse battery staple" }).expect(204);
+  });
+
+  it("enrolls email recovery without returning either plaintext code", async () => {
+    const verify = vi.fn(async () => undefined);
+    const send = vi.fn(async () => undefined);
+    const { app } = await createTestApp({ vaultEnrollmentMailer: { verify, send } });
+    const response = await request(app).post("/api/vault/enroll").send({
+      masterPassword,
+      recoveryEmail: "backup@example.com",
+      mail: { smtpHost: "smtp.example.com", smtpPort: 465, transportMode: "tls", smtpUsername: "owner@example.com", fromAddress: "owner@example.com", smtpPassword: "smtp-code" }
+    }).expect(201);
+    expect(response.body).toEqual({ state: "pending", maskedEmail: "b***@example.com", smtpHealth: "unknown", checkedAt: null });
+    expect(JSON.stringify(response.body)).not.toMatch(/recoveryCode|confirmationCode|smtp-code|LYJ-/i);
+    expect(verify).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it.each(["short", "x".repeat(1025)])("rejects invalid setup passwords with one fixed response", async (candidate) => {
     const { app } = await createTestApp();
     await request(app).post("/api/vault/setup").send({ masterPassword: candidate }).expect(400, {
@@ -147,6 +177,37 @@ describe("vault HTTP API", () => {
     expect(unlockCalls).toBe(6);
   });
 
+  it("requires online SMTP verification before local SMTP recovery", async () => {
+    const order: string[] = [];
+    const fakeVault = {
+      status: () => ({ configured: true, unlocked: false }), setup: async () => undefined, unlock: async () => undefined, lock: () => undefined,
+      resetWithSmtp: async () => { order.push("reset"); }
+    } satisfies Pick<VaultService, "status" | "setup" | "unlock" | "lock" | "resetWithSmtp">;
+    const app = express(); app.use(express.json());
+    app.use("/api", createVaultRouter({ vault: fakeVault, verifySmtpRecovery: async () => { order.push("verify"); } }));
+    await request(app).post("/api/vault/recovery/smtp-reset").send({ smtpEmail: "owner@example.com", smtpPassword: "smtp-code", newPassword: "replacement-master-password" }).expect(204);
+    expect(order).toEqual(["verify", "reset"]);
+  });
+
+  it("starts SMTP health verification without delaying a successful unlock", async () => {
+    const onUnlocked = vi.fn(() => new Promise<void>(() => undefined));
+    const fakeVault = { status: () => ({ configured: true, unlocked: false }), setup: async () => undefined, unlock: async () => undefined, lock: () => undefined } satisfies Pick<VaultService, "status" | "setup" | "unlock" | "lock">;
+    const app = express(); app.use(express.json()); app.use("/api", createVaultRouter({ vault: fakeVault, onUnlocked }));
+    await request(app).post("/api/vault/unlock").send({ masterPassword }).expect(204);
+    expect(onUnlocked).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a successful password reset when replacement recovery email fails", async () => {
+    const afterRecoveryCodeReset = vi.fn(async () => { throw new Error("mail unavailable"); });
+    const fakeVault = {
+      status: () => ({ configured: true, unlocked: false }), setup: async () => undefined, unlock: async () => undefined, lock: () => undefined,
+      resetWithRecoveryCode: async () => undefined
+    } satisfies Pick<VaultService, "status" | "setup" | "unlock" | "lock" | "resetWithRecoveryCode">;
+    const app = express(); app.use(express.json()); app.use("/api", createVaultRouter({ vault: fakeVault, afterRecoveryCodeReset }));
+    await request(app).post("/api/vault/recovery/code-reset").send({ recoveryCode: "LYJ-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-HHHH", newPassword: "replacement-master-password" }).expect(204);
+    expect(afterRecoveryCodeReset).toHaveBeenCalledOnce();
+  });
+
   it("serializes concurrent setup so the second request receives a fixed conflict", async () => {
     const { app } = await createTestApp();
     const responses = await Promise.all([
@@ -175,7 +236,8 @@ describe("vault HTTP API", () => {
     const values = new Map<string, string>();
     const injectedStore: SecretStore = {
       protectSecret: async (name, plaintext) => { values.set(name, plaintext); },
-      readSecret: async (name) => values.get(name) ?? null
+      readSecret: async (name) => values.get(name) ?? null,
+      deleteSecret: async (name) => { values.delete(name); }
     };
     const injectedApp = (await createTestApp({ secretStore: injectedStore })).app;
     await request(injectedApp).post("/api/vault/setup").send({ masterPassword }).expect(201);

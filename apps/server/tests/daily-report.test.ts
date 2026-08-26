@@ -7,12 +7,7 @@ import { createApp } from "../src/app";
 import { resolveAppPaths } from "../src/config/paths";
 import { openDatabase } from "../src/db/database";
 import { buildDailyReportMessages } from "../src/modules/daily-reports/daily-report.prompt";
-import {
-  DeepSeekClient,
-  DeepSeekClientError,
-  type DailyReportGenerationInput,
-  type DailyReportGenerator
-} from "../src/modules/daily-reports/deepseek.client";
+import { AiGatewayError, type AiCompletionInput } from "../src/modules/ai-gateway/ai-gateway.types";
 import type { SecretStore } from "../src/platform/secret-store";
 
 class MemorySecretStore implements SecretStore {
@@ -25,10 +20,11 @@ class MemorySecretStore implements SecretStore {
   public async readSecret(name: string): Promise<string | null> {
     return this.secrets.get(name) ?? null;
   }
+  public async deleteSecret(name: string): Promise<void> { this.secrets.delete(name); }
 }
 
-class StubGenerator implements DailyReportGenerator {
-  public readonly inputs: DailyReportGenerationInput[] = [];
+class StubGenerator {
+  public readonly inputs: AiCompletionInput[] = [];
 
   public constructor(
     private readonly outcome: { content: string; model: string } | Error = {
@@ -37,7 +33,7 @@ class StubGenerator implements DailyReportGenerator {
     }
   ) {}
 
-  public async generateDailyReport(input: DailyReportGenerationInput): Promise<{ content: string; model: string }> {
+  public async complete(input: AiCompletionInput): Promise<{ content: string; model: string }> {
     this.inputs.push(input);
     if (this.outcome instanceof Error) throw this.outcome;
     return this.outcome;
@@ -77,96 +73,6 @@ describe("daily report prompt", () => {
   });
 });
 
-describe("DeepSeekClient", () => {
-  it("propagates an external request abort into the pending provider fetch", async () => {
-    const controller = new AbortController();
-    let providerSignal: AbortSignal | null | undefined;
-    const client = new DeepSeekClient(vi.fn(async (_url, init) => {
-      providerSignal = init?.signal;
-      return await new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      });
-    }));
-    const pending = client.generateDailyReport({
-      baseUrl: "https://api.deepseek.com",
-      model: "deepseek-chat",
-      apiKey: "provider-key",
-      completed: "完成测试",
-      risks: "",
-      signal: controller.signal
-    });
-
-    controller.abort();
-
-    await expect(pending).rejects.toMatchObject({ category: "timeout" });
-    expect(providerSignal?.aborted).toBe(true);
-  });
-
-  it("uses a 30-second abort timeout, refuses redirects, and owns the authorization header", async () => {
-    vi.useFakeTimers();
-    let capturedInit: RequestInit | undefined;
-    const fetchImplementation: typeof fetch = vi.fn(async (_url, init) => {
-      capturedInit = init;
-      return await new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      });
-    });
-    const client = new DeepSeekClient(fetchImplementation);
-    const pending = client.generateDailyReport({
-      baseUrl: "https://api.deepseek.com/v1",
-      model: "deepseek-chat",
-      apiKey: "provider-boundary-key",
-      completed: "完成测试",
-      risks: ""
-    });
-
-    expect(capturedInit?.redirect).toBe("manual");
-    expect(capturedInit?.headers).toEqual({
-      Authorization: "Bearer provider-boundary-key",
-      "Content-Type": "application/json"
-    });
-    const timeoutExpectation = expect(pending).rejects.toMatchObject({ category: "timeout" });
-    await vi.advanceTimersByTimeAsync(29_999);
-    expect(capturedInit?.signal?.aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    await timeoutExpectation;
-    vi.useRealTimers();
-  });
-
-  it.each([
-    [401, "auth"],
-    [403, "auth"],
-    [429, "rate_limit"],
-    [302, "upstream"],
-    [500, "upstream"]
-  ] as const)("maps provider status %i to %s without exposing the upstream body", async (status, category) => {
-    const client = new DeepSeekClient(vi.fn().mockResolvedValue(new Response("provider-secret-body", { status })));
-
-    await expect(client.generateDailyReport({
-      baseUrl: "https://api.deepseek.com",
-      model: "deepseek-chat",
-      apiKey: "provider-key",
-      completed: "完成测试",
-      risks: ""
-    })).rejects.toMatchObject({ category, message: "DeepSeek request failed" });
-  });
-
-  it("rejects invalid success response shapes without exposing raw data", async () => {
-    const client = new DeepSeekClient(vi.fn().mockResolvedValue(new Response(JSON.stringify({ secret: "raw-upstream-secret" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
-    })));
-
-    await expect(client.generateDailyReport({
-      baseUrl: "https://api.deepseek.com",
-      model: "deepseek-chat",
-      apiKey: "provider-key",
-      completed: "完成测试",
-      risks: ""
-    })).rejects.toMatchObject({ category: "upstream", message: "DeepSeek request failed" });
-  });
-});
-
 describe("daily report API", () => {
   let tempDir: string;
   let secretStore: MemorySecretStore;
@@ -184,23 +90,23 @@ describe("daily report API", () => {
 
   it("returns configuration guidance when the API key is missing and does not call the provider", async () => {
     const generator = new StubGenerator();
-    const response = await request(createApp({ dataDir: tempDir, secretStore, deepSeekClient: generator }))
+    const response = await request(createApp({ dataDir: tempDir, secretStore }))
       .post("/api/daily-reports/generate")
       .send({ completed: "完成接口", risks: "" });
 
     expect(response.status).toBe(409);
-    expect(response.body).toEqual({ error: { message: "请先在设置中配置 DeepSeek", code: "DEEPSEEK_NOT_CONFIGURED" } });
+    expect(response.body).toEqual({ error: { message: "请先在设置中配置模型服务", code: "AI_NOT_CONFIGURED" } });
     expect(generator.inputs).toEqual([]);
   });
 
   it.each([
-    [new DeepSeekClientError("auth"), 401, "DEEPSEEK_AUTH_FAILED"],
-    [new DeepSeekClientError("rate_limit"), 429, "DEEPSEEK_RATE_LIMITED"],
-    [new DeepSeekClientError("timeout"), 504, "DEEPSEEK_TIMEOUT"],
-    [new DeepSeekClientError("upstream"), 502, "DEEPSEEK_UPSTREAM_ERROR"],
-    [new Error("raw provider body with provider-key"), 502, "DEEPSEEK_UPSTREAM_ERROR"]
+    [new AiGatewayError("auth"), 401, "AI_AUTH_FAILED"],
+    [new AiGatewayError("rate_limit"), 429, "AI_RATE_LIMITED"],
+    [new AiGatewayError("timeout"), 504, "AI_TIMEOUT"],
+    [new AiGatewayError("upstream"), 502, "AI_UPSTREAM_ERROR"],
+    [new Error("raw provider body with provider-key"), 502, "AI_UPSTREAM_ERROR"]
   ])("maps sanitized provider failures to HTTP responses", async (failure, status, code) => {
-    const app = createApp({ dataDir: tempDir, secretStore, deepSeekClient: new StubGenerator(failure) });
+    const app = createApp({ dataDir: tempDir, secretStore, aiGateway: new StubGenerator(failure) });
     await configure(app, "provider-key");
 
     const response = await request(app).post("/api/daily-reports/generate").send({ completed: "完成接口", risks: "" });
@@ -213,7 +119,7 @@ describe("daily report API", () => {
 
   it("reads credentials at request time and persists successful output with the actual model and timestamps", async () => {
     const generator = new StubGenerator();
-    const app = createApp({ dataDir: tempDir, secretStore, deepSeekClient: generator });
+    const app = createApp({ dataDir: tempDir, secretStore, aiGateway: generator });
     await configure(app, "first-key");
     await secretStore.protectSecret("deepseek-api-key", "request-time-key");
 
@@ -224,11 +130,8 @@ describe("daily report API", () => {
 
     expect(response.status).toBe(201);
     expect(generator.inputs).toEqual([{
-      baseUrl: "https://api.deepseek.com/v1",
-      model: "deepseek-chat",
-      apiKey: "request-time-key",
-      completed: "完成接口联调",
-      risks: "等待权限开通",
+      messages: buildDailyReportMessages({ completed: "完成接口联调", risks: "等待权限开通" }),
+      temperature: 0.2,
       signal: expect.any(AbortSignal)
     }]);
     expect(response.body).toMatchObject({
@@ -244,7 +147,7 @@ describe("daily report API", () => {
 
   it("maps a local persistence failure to a sanitized 500 after one successful provider call", async () => {
     const generator = new StubGenerator();
-    const app = createApp({ dataDir: tempDir, secretStore, deepSeekClient: generator });
+    const app = createApp({ dataDir: tempDir, secretStore, aiGateway: generator });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await configure(app, "provider-key-must-not-leak");
     const database = openDatabase(resolveAppPaths({ dataDir: tempDir }));
@@ -270,7 +173,7 @@ describe("daily report API", () => {
 
   it("lists newest first and validates, loads, and edits reports without changing original input", async () => {
     const generator = new StubGenerator();
-    const app = createApp({ dataDir: tempDir, secretStore, deepSeekClient: generator });
+    const app = createApp({ dataDir: tempDir, secretStore, aiGateway: generator });
     await configure(app);
     const first = await request(app).post("/api/daily-reports/generate").send({ completed: "第一项", risks: "第一项风险" });
     const second = await request(app).post("/api/daily-reports/generate").send({ completed: "第二项", risks: "第二项风险" });

@@ -8,7 +8,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { buildAiPolishMessages, buildSystemPromptMessages } from "../src/modules/ai-polish/ai-polish.prompt";
-import type { AiPolishGenerationInput, AiPolishGenerator, AiSystemPromptGenerationInput } from "../src/modules/ai-polish/ai-polish.client";
+import type { AiCompletionInput } from "../src/modules/ai-gateway/ai-gateway.types";
 import type { SecretStore } from "../src/platform/secret-store";
 import { openDatabase } from "../src/db/database";
 import { resolveAppPaths } from "../src/config/paths";
@@ -19,18 +19,23 @@ class MemorySecretStore implements SecretStore {
   private readonly secrets = new Map<string, string>();
   public async protectSecret(name: string, plaintext: string) { this.secrets.set(name, plaintext); }
   public async readSecret(name: string) { return this.secrets.get(name) ?? null; }
+  public async deleteSecret(name: string) { this.secrets.delete(name); }
 }
 
-class StubPolishGenerator implements AiPolishGenerator {
-  public readonly inputs: AiPolishGenerationInput[] = [];
-  public readonly promptInputs: AiSystemPromptGenerationInput[] = [];
-  public async generatePolish(input: AiPolishGenerationInput) {
+class StubPolishGenerator {
+  public readonly inputs: AiCompletionInput[] = [];
+  public readonly promptInputs: AiCompletionInput[] = [];
+  public async complete(input: AiCompletionInput) {
+    const source = input.messages.at(-1)?.content ?? "";
+    if (source.includes("请根据以下需求生成系统提示词")) {
+      this.promptInputs.push(input);
+      return { content: `自动提示词：${source.split("\n\n").at(-1)}`, model: "deepseek-chat-actual" };
+    }
     this.inputs.push(input);
-    return { content: `已处理：${input.primaryText}`, model: "deepseek-chat-actual" };
-  }
-  public async generateSystemPrompt(input: AiSystemPromptGenerationInput) {
-    this.promptInputs.push(input);
-    return { prompt: `自动提示词：${input.goal}`, model: "deepseek-chat-actual" };
+    const labels = new Set(["今日完成", "沟通素材", "待翻译原文", "待润色原文", "待处理内容"]);
+    const primary = source.split("\n").map((line) => line.trim())
+      .find((line) => line && !line.startsWith("以下内容") && !labels.has(line)) ?? "";
+    return { content: `已处理：${primary}`, model: "deepseek-chat-actual" };
   }
 }
 
@@ -64,7 +69,7 @@ describe("AI polish API", () => {
 
   it("persists each scenario and returns a single newest-first history", async () => {
     const generator = new StubPolishGenerator();
-    const app = createApp({ dataDir, secretStore, aiPolishClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
 
     const daily = await request(app).post("/api/ai-polish/generate").send({ kind: "daily_report", primaryText: "完成测试", secondaryText: "", systemPrompt: "日报提示词" }).expect(201);
@@ -73,13 +78,13 @@ describe("AI polish API", () => {
 
     expect(history.body.map((record: { kind: string }) => record.kind)).toEqual(["leadership", "daily_report"]);
     expect(leadership.body).toMatchObject({ kind: "leadership", primaryText: "项目完成", secondaryText: "请确认", systemPrompt: "领导提示词", content: "已处理：项目完成" });
-    expect(generator.inputs[1]).toMatchObject({ kind: "leadership", apiKey: "test-key" });
+    expect(generator.inputs[1].messages.map((message) => message.role)).toEqual(["system", "system", "user"]);
     await request(app).put(`/api/ai-polish/${daily.body.id}`).send({ content: "修改后的日报" }).expect(200).expect((response) => expect(response.body.content).toBe("修改后的日报"));
   });
 
   it("rejects invalid kinds and empty source content before calling DeepSeek", async () => {
     const generator = new StubPolishGenerator();
-    const app = createApp({ dataDir, secretStore, aiPolishClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).post("/api/ai-polish/generate").send({ kind: "unknown", primaryText: "内容", secondaryText: "", systemPrompt: "提示词" }).expect(400);
     await request(app).post("/api/ai-polish/generate").send({ kind: "general", primaryText: "", secondaryText: "", systemPrompt: "提示词" }).expect(400);
     expect(generator.inputs).toEqual([]);
@@ -94,10 +99,9 @@ describe("AI polish API", () => {
     let rejectProvider!: (error: Error) => void;
     let providerStarted!: () => void;
     const started = new Promise<void>((resolve) => { providerStarted = resolve; });
-    const generator = {
-      generatePolish: async () => new Promise<never>((_resolve, reject) => { rejectProvider = reject; providerStarted(); }),
-      generateSystemPrompt: async () => ({ prompt: "unused", model: "unused" })
-    } satisfies AiPolishGenerator;
+    const gateway = {
+      complete: async () => new Promise<never>((_resolve, reject) => { rejectProvider = reject; providerStarted(); })
+    };
     let lateStatusCalls = 0;
     const expressApp = express();
     expressApp.use(express.json());
@@ -111,7 +115,7 @@ describe("AI polish API", () => {
       }) as typeof response.status;
       next();
     });
-    expressApp.use("/api", createAiPolishRouter(paths, { secretStore, generator }));
+    expressApp.use("/api", createAiPolishRouter(paths, { gateway }));
     const server = createServer(expressApp);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -132,18 +136,18 @@ describe("AI polish API", () => {
 
   it("generates a custom system prompt without adding a history record", async () => {
     const generator = new StubPolishGenerator();
-    const app = createApp({ dataDir, secretStore, aiPolishClient: generator });
+    const app = createApp({ dataDir, secretStore, aiGateway: generator });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
 
     await request(app).post("/api/ai-polish/system-prompt").send({ goal: "把会议笔记整理成行动项" }).expect(200).expect((response) => {
       expect(response.body).toEqual({ prompt: "自动提示词：把会议笔记整理成行动项", model: "deepseek-chat-actual" });
     });
-    expect(generator.promptInputs[0]).toMatchObject({ goal: "把会议笔记整理成行动项", apiKey: "test-key" });
+    expect(generator.promptInputs[0].messages.at(-1)?.content).toContain("把会议笔记整理成行动项");
     await request(app).get("/api/ai-polish").expect(200).expect([]);
   });
 
   it("persists one editable system prompt per polish scenario", async () => {
-    const app = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    const app = createApp({ dataDir, secretStore, aiGateway: new StubPolishGenerator() });
 
     await request(app).get("/api/ai-polish/prompts").expect(200).expect([]);
     await request(app)
@@ -152,7 +156,7 @@ describe("AI polish API", () => {
       .expect(200)
       .expect((response) => expect(response.body).toMatchObject({ kind: "translation", systemPrompt: "保存后的翻译提示词" }));
 
-    const reopened = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    const reopened = createApp({ dataDir, secretStore, aiGateway: new StubPolishGenerator() });
     await request(reopened).get("/api/ai-polish/prompts").expect(200).expect((response) => {
       expect(response.body).toHaveLength(1);
       expect(response.body[0]).toMatchObject({ kind: "translation", systemPrompt: "保存后的翻译提示词" });
@@ -160,7 +164,7 @@ describe("AI polish API", () => {
   });
 
   it("rejects invalid prompt scenario names and empty saved prompts", async () => {
-    const app = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    const app = createApp({ dataDir, secretStore, aiGateway: new StubPolishGenerator() });
     await request(app).put("/api/ai-polish/prompts/unknown").send({ systemPrompt: "提示词" }).expect(400);
     await request(app).put("/api/ai-polish/prompts/general").send({ systemPrompt: "" }).expect(400);
   });
@@ -204,7 +208,7 @@ describe("AI polish API", () => {
     `);
     legacy.close();
 
-    const app = createApp({ dataDir, secretStore, aiPolishClient: new StubPolishGenerator() });
+    const app = createApp({ dataDir, secretStore, aiGateway: new StubPolishGenerator() });
     await request(app).put("/api/settings/deepseek").send({ baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "test-key" }).expect(200);
     await request(app).post("/api/ai-polish/generate").send({ kind: "custom", primaryText: "新内容", secondaryText: "", systemPrompt: "自定义提示词" }).expect(201);
     await request(app).get("/api/ai-polish").expect(200).expect((response) => {

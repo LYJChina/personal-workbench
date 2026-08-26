@@ -17,6 +17,18 @@ export class SettingsRepository {
   public constructor(private readonly database: Database.Database) {}
 
   public getDeepSeekSettings(apiKeyConfigured: boolean): DeepSeekSettings {
+    const connection = this.database.prepare(`
+      SELECT base_url, model
+      FROM ai_connections
+      WHERE id = 'legacy-deepseek'
+    `).get() as { base_url: string; model: string } | undefined;
+    if (connection) {
+      return {
+        baseUrl: connection.base_url,
+        model: connection.model,
+        apiKeyConfigured
+      };
+    }
     const values = this.read([
       "deepseek.base_url",
       "deepseek.model"
@@ -29,11 +41,22 @@ export class SettingsRepository {
   }
 
   public saveDeepSeekSettings(input: Pick<DeepSeekSettings, "baseUrl" | "model">, apiKeyConfigured: boolean): DeepSeekSettings {
-    this.write({
-      "deepseek.base_url": input.baseUrl,
-      "deepseek.model": input.model
-    });
+    this.database.transaction(() => {
+      this.write({
+        "deepseek.base_url": input.baseUrl,
+        "deepseek.model": input.model
+      });
+      this.database.prepare(`
+        UPDATE ai_connections
+        SET base_url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = 'legacy-deepseek'
+      `).run(input.baseUrl, input.model);
+    })();
     return this.getDeepSeekSettings(apiKeyConfigured);
+  }
+
+  public hasLegacyDeepSeekConnection(): boolean {
+    return Boolean(this.database.prepare("SELECT 1 FROM ai_connections WHERE id = 'legacy-deepseek'").get());
   }
 
   public getMailSettings(smtpPasswordConfigured: boolean): MailSettings {
