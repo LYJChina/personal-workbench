@@ -280,17 +280,36 @@ describe("PluginManager", () => {
       updateAiOfficeOrder: ReturnType<typeof vi.fn>;
     };
     const user = userEvent.setup();
+    vi.mocked(api.getAiOfficeOrder)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ itemId: "lyj.plugin.newer", position: 0 }]);
     render(<PluginManager api={api} refreshContributions={vi.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: "添加到 AI 办公" }));
 
-    expect(api.updateAiOfficeOrder).toHaveBeenCalledWith([{ itemId: pluginWithRoute.manifest.id, position: 0 }]);
+    expect(api.getAiOfficeOrder).toHaveBeenCalledTimes(2);
+    expect(api.updateAiOfficeOrder).toHaveBeenCalledWith([
+      { itemId: "lyj.plugin.newer", position: 0 },
+      { itemId: pluginWithRoute.manifest.id, position: 1 }
+    ]);
     expect(JSON.parse(localStorage.getItem("lyj.plugin-placements.v1") ?? "[]")).toEqual([
       { pluginId: running.manifest.id, name: running.manifest.name, path: "/", surface: "dashboard" }
     ]);
 
     await user.click(screen.getByRole("button", { name: "从主页移除" }));
     expect(JSON.parse(localStorage.getItem("lyj.plugin-placements.v1") ?? "[]")).toEqual([]);
+  });
+
+  it("keeps lifecycle controls available when only AI Office order loading fails", async () => {
+    const api = createApi();
+    vi.mocked(api.getAiOfficeOrder).mockRejectedValue(new Error("SQLITE_BUSY"));
+
+    render(<PluginManager api={api} refreshContributions={vi.fn()} />);
+
+    expect(await screen.findByRole("article", { name: "大模型对话" })).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "启用 大模型对话" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("AI 办公入口暂时无法更新，请稍后重试。");
+    expect(document.body).not.toHaveTextContent("SQLITE_BUSY");
   });
 
   it("prevents duplicate AI Office placement mutations and shows fixed Chinese feedback on failure", async () => {

@@ -105,10 +105,15 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
       setFeedback((current) => current === listError ? null : current);
     }
     try {
-      const [loaded, order] = await Promise.all([api.getPlugins(controller.signal), api.getAiOfficeOrder()]);
+      const loaded = await api.getPlugins(controller.signal);
       if (mounted.current && listGeneration.current === generation) {
         setPlugins(loaded.filter((plugin) => plugin.manifest.kind === kind));
-        setAiOfficeOrder(order);
+      }
+      try {
+        const order = await api.getAiOfficeOrder();
+        if (mounted.current && listGeneration.current === generation) setAiOfficeOrder(order);
+      } catch {
+        if (mounted.current && listGeneration.current === generation) setFeedback(aiOfficePlacementError);
       }
     } catch {
       if (mounted.current && listGeneration.current === generation && !controller.signal.aborted) {
@@ -223,17 +228,21 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
     const controller = new AbortController();
     mutationController.current = controller;
     const previousOrder = aiOfficeOrder;
-    const currentIds = previousOrder
-      .slice()
-      .sort((left, right) => left.position - right.position)
-      .map((item) => item.itemId);
-    const included = currentIds.includes(plugin.manifest.id);
-    const nextIds = included ? currentIds.filter((itemId) => itemId !== plugin.manifest.id) : [...currentIds, plugin.manifest.id];
-    const nextOrder = normalizeAiOfficeOrder(nextIds);
+    const cachedIncluded = previousOrder.some((item) => item.itemId === plugin.manifest.id);
     setFeedback(null);
-    setPending({ kind: "ai-office", id: plugin.manifest.id, mode: included ? "remove" : "add" });
-    setAiOfficeOrder(nextOrder);
+    setPending({ kind: "ai-office", id: plugin.manifest.id, mode: cachedIncluded ? "remove" : "add" });
     try {
+      const latestOrder = await api.getAiOfficeOrder();
+      if (!mounted.current || mutationGeneration.current !== generation || controller.signal.aborted) return;
+      const currentIds = latestOrder
+        .slice()
+        .sort((left, right) => left.position - right.position)
+        .map((item) => item.itemId);
+      const included = currentIds.includes(plugin.manifest.id);
+      const nextIds = included ? currentIds.filter((itemId) => itemId !== plugin.manifest.id) : [...currentIds, plugin.manifest.id];
+      const nextOrder = normalizeAiOfficeOrder(nextIds);
+      setPending({ kind: "ai-office", id: plugin.manifest.id, mode: included ? "remove" : "add" });
+      setAiOfficeOrder(nextOrder);
       const saved = await api.updateAiOfficeOrder(nextOrder);
       if (!mounted.current || mutationGeneration.current !== generation || controller.signal.aborted) return;
       setAiOfficeOrder(saved);

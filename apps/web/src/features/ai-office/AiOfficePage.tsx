@@ -1,4 +1,4 @@
-import type { AiOfficeOrder, PluginContribution, PluginSummary, SurfaceLayoutItem } from "@workbench/contracts";
+import type { AiOfficeOrder, PluginSummary, SurfaceLayoutItem } from "@workbench/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../app/Icon";
 import { api } from "../../lib/api";
@@ -97,7 +97,8 @@ function migrateAiOfficeIds(
     .filter(({ item }) => item.surface === "ai-office" && item.enabled)
     .sort((left, right) => left.item.y - right.item.y || left.item.x - right.item.x || left.sourceIndex - right.sourceIndex)
     .map(({ item }) => toolPluginIds.get(item.itemId))
-    .filter((pluginId): pluginId is string => Boolean(pluginId && enabledPluginIds.has(pluginId)));
+    .filter((pluginId): pluginId is string => Boolean(pluginId && enabledPluginIds.has(pluginId)))
+    .filter((pluginId, index, items) => items.indexOf(pluginId) === index);
   const migrated = [...fromLayout];
   for (const placement of readLegacyPlacements()) {
     if (placement.surface !== "ai-office") continue;
@@ -158,6 +159,7 @@ export function AiOfficePage() {
     const generation = requestGeneration.current;
     const normalized = normalizeOrderIds(persistedOrder, availableIds);
     if (persistedOrder.length > 0) {
+      clearLegacyKeysAfterMigration();
       setDraftIds((current) => sameIds(current, normalized) ? current : normalized);
       migrationAttempted.current = true;
       return;

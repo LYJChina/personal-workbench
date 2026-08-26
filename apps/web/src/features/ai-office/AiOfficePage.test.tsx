@@ -371,6 +371,59 @@ describe("AiOfficePage", () => {
     ]);
   });
 
+  it("deduplicates legacy tools contributed by the same plugin", async () => {
+    const polish = plugin("lyj.system.ai-polish", "AI 润色", {
+      aiTool: { id: "ai-polish", label: "AI 润色", description: "润色文字", path: "/ai-office/polish", icon: "sparkles" }
+    });
+    mockContributions.aiTools = [
+      { id: "ai-polish", label: "AI 润色", description: "润色文字", path: "/ai-office/polish", icon: "sparkles", position: 0, pluginId: polish.manifest.id },
+      { id: "ai-translate", label: "AI 翻译", description: "翻译文字", path: "/ai-office/polish", icon: "sparkles", position: 1, pluginId: polish.manifest.id }
+    ];
+    localStorage.setItem("lyj.ai-office.layout", JSON.stringify([
+      { itemId: "ai-polish", surface: "ai-office", x: 0, y: 0, w: 8, h: 4, enabled: true },
+      { itemId: "ai-translate", surface: "ai-office", x: 8, y: 0, w: 8, h: 4, enabled: true }
+    ]));
+    localStorage.setItem("lyj.plugin-placements.v1", JSON.stringify([
+      { pluginId: polish.manifest.id, name: "AI 润色", path: "/ai-office/polish", surface: "ai-office" }
+    ]));
+    configureApi({
+      getPlugins: async () => [polish],
+      getAiOfficeOrder: async () => [],
+      updateAiOfficeOrder: async (order) => order
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(api.updateAiOfficeOrder).toHaveBeenCalledWith([
+      { itemId: polish.manifest.id, position: 0 }
+    ]));
+    expect(localStorage.getItem("lyj.plugin-placements.v1")).toBeNull();
+  });
+
+  it("clears stale legacy AI Office state when database order is already authoritative", async () => {
+    const polish = plugin("lyj.system.ai-polish", "AI 润色", {
+      aiTool: { id: "ai-polish", label: "AI 润色", description: "润色文字", path: "/ai-office/polish", icon: "sparkles" }
+    });
+    mockContributions.aiTools = [{ id: "ai-polish", label: "AI 润色", description: "润色文字", path: "/ai-office/polish", icon: "sparkles", position: 0, pluginId: polish.manifest.id }];
+    localStorage.setItem("lyj.ai-office.layout", JSON.stringify([
+      { itemId: "ai-polish", surface: "ai-office", x: 0, y: 0, w: 8, h: 4, enabled: true }
+    ]));
+    localStorage.setItem("lyj.plugin-placements.v1", JSON.stringify([
+      { pluginId: polish.manifest.id, name: "AI 润色", path: "/ai-office/polish", surface: "ai-office" }
+    ]));
+    configureApi({
+      getPlugins: async () => [polish],
+      getAiOfficeOrder: async () => [{ itemId: polish.manifest.id, position: 0 }]
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "AI 润色" })).toBeVisible();
+    await waitFor(() => expect(localStorage.getItem("lyj.ai-office.layout")).toBeNull());
+    expect(localStorage.getItem("lyj.plugin-placements.v1")).toBeNull();
+    expect(api.updateAiOfficeOrder).not.toHaveBeenCalled();
+  });
+
   it("keeps legacy storage intact and shows the normal load error when migration persistence fails", async () => {
     const polish = plugin("lyj.system.ai-polish", "AI 润色", {
       aiTool: { id: "ai-polish", label: "AI 润色", description: "润色文字", path: "/ai-office/polish", icon: "sparkles" }
