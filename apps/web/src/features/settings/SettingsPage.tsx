@@ -1,25 +1,35 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   ConnectionTestResult,
-  DeepSeekSettings,
-  DeepSeekSettingsUpdate,
   MailSettings,
   MailSettingsUpdate,
   SettingsResponse
 } from "@workbench/contracts";
+import type { AiPersonaSettings } from "@workbench/contracts";
 import { useTheme } from "../../app/ThemeProvider";
 import { api as defaultApi } from "../../lib/api";
 import { Icon } from "../../app/Icon";
 import { useAppearance, type WorkbenchSkin } from "../../app/AppearanceProvider";
 import { PluginManager, type PluginManagerApi } from "../plugins/PluginManager";
+import { AiConnectionsPanel, type AiConnectionsApi } from "./AiConnectionsPanel";
+import { AccountSecurityPanel, type AccountSecurityApi } from "./AccountSecurityPanel";
 
-export interface SettingsApi extends PluginManagerApi {
+export interface SettingsApi extends PluginManagerApi, AiConnectionsApi, AccountSecurityApi {
   getSettings(): Promise<SettingsResponse>;
-  updateDeepSeekSettings(settings: DeepSeekSettingsUpdate): Promise<DeepSeekSettings>;
   updateMailSettings(settings: MailSettingsUpdate): Promise<MailSettings>;
-  testDeepSeekConnection(): Promise<ConnectionTestResult>;
   testMailConnection(): Promise<ConnectionTestResult>;
   exportDatabase(): Promise<string>;
+  getAiPersona(): Promise<AiPersonaSettings>;
+  updateAiPersona(settings: Omit<AiPersonaSettings, "updatedAt">): Promise<AiPersonaSettings>;
+}
+
+function AiPersonaPanel({ api }: { api: SettingsApi }) {
+  const [value, setValue] = useState<AiPersonaSettings | null>(null);
+  const [message, setMessage] = useState("");
+  useEffect(() => { void api.getAiPersona().then(setValue).catch(() => setMessage("画像加载失败")); }, [api]);
+  if (!value) return <section className="settings-section"><p>{message || "正在加载 AI 画像…"}</p></section>;
+  async function save(event: FormEvent) { event.preventDefault(); setMessage("保存中…"); try { setValue(await api.updateAiPersona({ assistantName: value.assistantName, personality: value.personality, userProfile: value.userProfile, customPrompt: value.customPrompt })); setMessage("AI 设置已保存"); } catch { setMessage("保存失败"); } }
+  return <section className="settings-section" aria-labelledby="ai-persona-heading"><div className="settings-section-heading"><div className="card-icon"><Icon name="sparkles" /></div><div><h3 id="ai-persona-heading">问问 AI 设置</h3><p>自定义 AI 名称、性格和会话系统提示词。</p></div></div><form onSubmit={(event) => void save(event)}><div className="form-grid"><label>AI 名称<input value={value.assistantName} onChange={(event) => setValue({ ...value, assistantName: event.target.value })} /></label><label>AI 性格<input value={value.personality} onChange={(event) => setValue({ ...value, personality: event.target.value })} /></label></div><label>我的个人画像<textarea rows={4} value={value.userProfile} onChange={(event) => setValue({ ...value, userProfile: event.target.value })} /></label><label>自定义系统提示词<textarea rows={5} value={value.customPrompt} onChange={(event) => setValue({ ...value, customPrompt: event.target.value })} /></label><div className="form-actions"><button className="button-primary" type="submit">保存 AI 设置</button>{message && <span role="status">{message}</span>}</div></form></section>;
 }
 
 interface SettingsPageProps {
@@ -36,9 +46,8 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
   const { theme, setTheme } = useTheme();
   const { appearance, updateAppearance, resetAppearance, persistenceError, retryAppearance } = useAppearance();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const [apiKey, setApiKey] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
-  const [deepSeekTest, setDeepSeekTest] = useState<TestState>(null);
+  const [smtpCurrentPassword, setSmtpCurrentPassword] = useState("");
   const [mailTest, setMailTest] = useState<TestState>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -59,32 +68,8 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
     return () => { active = false; };
   }, [settingsApi]);
 
-  function updateDeepSeek(field: "baseUrl" | "model", value: string) {
-    setSettings((current) => current ? { ...current, deepseek: { ...current.deepseek, [field]: value } } : current);
-  }
-
   function updateMail(field: "smtpHost" | "smtpUsername" | "fromAddress", value: string) {
     setSettings((current) => current ? { ...current, mail: { ...current.mail, [field]: value } } : current);
-  }
-
-  async function saveDeepSeek(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!settings) return;
-    setFeedback(null);
-    const replacement = apiKey.trim();
-    const input: DeepSeekSettingsUpdate = {
-      baseUrl: settings.deepseek.baseUrl,
-      model: settings.deepseek.model,
-      ...(replacement ? { apiKey: replacement } : {})
-    };
-    try {
-      const deepseek = await settingsApi.updateDeepSeekSettings(input);
-      setSettings((current) => current ? { ...current, deepseek } : current);
-      setApiKey("");
-      setFeedback("DeepSeek 设置已保存");
-    } catch (error) {
-      setFeedback(messageFor(error));
-    }
   }
 
   async function saveMail(event: FormEvent<HTMLFormElement>) {
@@ -98,24 +83,17 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
       transportMode: settings.mail.transportMode,
       smtpUsername: settings.mail.smtpUsername,
       fromAddress: settings.mail.fromAddress,
-      ...(replacement ? { smtpPassword: replacement } : {})
+      ...(replacement ? { smtpPassword: replacement } : {}),
+      ...(replacement && smtpCurrentPassword ? { currentPassword: smtpCurrentPassword } : {})
     };
     try {
       const mail = await settingsApi.updateMailSettings(input);
       setSettings((current) => current ? { ...current, mail } : current);
       setSmtpPassword("");
+      setSmtpCurrentPassword("");
       setFeedback("邮件设置已保存");
     } catch (error) {
       setFeedback(messageFor(error));
-    }
-  }
-
-  async function runDeepSeekTest() {
-    setDeepSeekTest({ status: "pending", message: "测试中…" });
-    try {
-      setDeepSeekTest(await settingsApi.testDeepSeekConnection());
-    } catch (error) {
-      setDeepSeekTest({ status: "unreachable_host", message: messageFor(error) });
     }
   }
 
@@ -151,15 +129,9 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
       <header className="page-heading"><div><span className="eyebrow">PREFERENCES</span><h2>设置</h2><p>管理 AI、邮件通知、备份和工作台外观。</p></div></header>
       {feedback && <p className="feedback-banner" role="status">{feedback}</p>}
 
-      <section aria-labelledby="deepseek-heading">
-        <div className="settings-section-heading"><div className="card-icon"><Icon name="sparkles" /></div><div><h3 id="deepseek-heading">DeepSeek</h3><p>用于日报润色和后续 AI 办公功能</p></div><span className={`status-chip ${settings.deepseek.apiKeyConfigured ? "" : "neutral"}`}>{settings.deepseek.apiKeyConfigured ? "API Key 已配置" : "API Key 未配置"}</span></div>
-        <form onSubmit={saveDeepSeek}>
-          <div className="form-grid"><label>API 地址<input type="url" required value={settings.deepseek.baseUrl} onChange={(event) => updateDeepSeek("baseUrl", event.target.value)} /></label><label>模型名称<input required value={settings.deepseek.model} onChange={(event) => updateDeepSeek("model", event.target.value)} /></label></div>
-          <label>API Key<input aria-label="API Key" type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="留空则保持不变" /><small>密钥保存在可迁移的本地加密保险库中，转移后需使用同一主密码解锁。</small></label>
-          <div className="form-actions"><button className="button-primary" type="submit">保存 DeepSeek 设置</button><button className="button-secondary" type="button" disabled={deepSeekTest?.status === "pending"} onClick={() => void runDeepSeekTest()}>{deepSeekTest?.status === "pending" ? "测试中…" : "测试 DeepSeek 连接"}</button></div>
-          {deepSeekTest && deepSeekTest.status !== "pending" && <p role="status">{deepSeekTest.message}</p>}
-        </form>
-      </section>
+      <AiConnectionsPanel api={settingsApi} />
+      <AiPersonaPanel api={settingsApi} />
+      <AccountSecurityPanel api={settingsApi} />
 
       <section aria-labelledby="mail-heading">
         <div className="settings-section-heading"><div className="card-icon warm"><Icon name="mail" /></div><div><h3 id="mail-heading">邮件通知</h3><p>仅供手动测试发送；提醒计划不会自动发送邮件</p></div><span className={`status-chip ${settings.mail.smtpPasswordConfigured ? "" : "neutral"}`}>{settings.mail.smtpPasswordConfigured ? "SMTP 密码已配置" : "SMTP 密码未配置"}</span></div>
@@ -168,6 +140,7 @@ export function SettingsPage({ api: settingsApi = defaultApi }: SettingsPageProp
           <div className="form-grid"><label>SMTP 用户名<input value={settings.mail.smtpUsername} onChange={(event) => updateMail("smtpUsername", event.target.value)} /></label>
           <label>发件地址<input type="email" required value={settings.mail.fromAddress} onChange={(event) => updateMail("fromAddress", event.target.value)} /></label>
           </div><label>SMTP 密码<input aria-label="SMTP 密码" type="password" autoComplete="new-password" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder="留空则保持不变" /></label>
+          {smtpPassword && <label>当前主密码<input aria-label="更新 SMTP 时的当前主密码" type="password" autoComplete="current-password" value={smtpCurrentPassword} onChange={(event) => setSmtpCurrentPassword(event.target.value)} placeholder="用于同步更新 SMTP 恢复密钥" /></label>}
           <div className="form-actions"><button className="button-primary" type="submit">保存邮件设置</button><button className="button-secondary" type="button" disabled={mailTest?.status === "pending"} onClick={() => void runMailTest()}>{mailTest?.status === "pending" ? "测试中…" : "测试邮件连接"}</button></div>
           {mailTest && mailTest.status !== "pending" && <p role="status">{mailTest.message}</p>}
         </form>
