@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../app/Icon";
 import { api as defaultApi } from "../../lib/api";
 import { usePluginContributions } from "../../plugins/ContributionProvider";
+import { readPluginPlacements, setPluginPlacement, type PluginPlacementSurface } from "./pluginPlacements";
 
 export interface PluginManagerApi {
   getPlugins(signal?: AbortSignal): Promise<PluginSummary[]>;
@@ -82,6 +83,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pending, setPending] = useState<{ kind: "toggle"; id: string } | { kind: "reset" } | null>(null);
+  const [placements, setPlacements] = useState(() => readPluginPlacements());
   const mounted = useRef(false);
   const listGeneration = useRef(0);
   const mutationGeneration = useRef(0);
@@ -196,6 +198,17 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
 
   const safeMode = plugins.some((plugin) => plugin.runtimeStatus === "safe-mode");
   const mutationPending = pending !== null;
+  function placementPath(plugin: PluginSummary): string | null {
+    const contribution = plugin.manifest.contributions.find((item) => item.type === "route" || item.type === "navigation" || item.type === "ai-tool");
+    return contribution && "path" in contribution ? contribution.path : null;
+  }
+  function togglePlacement(plugin: PluginSummary, surface: PluginPlacementSurface) {
+    const path = placementPath(plugin);
+    if (!path) return;
+    const enabled = !placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === surface);
+    setPluginPlacement({ pluginId: plugin.manifest.id, name: plugin.manifest.name, path, surface }, enabled);
+    setPlacements(readPluginPlacements());
+  }
 
   return (
     <section className="plugin-manager" aria-labelledby="system-plugins-heading" aria-busy={loading || mutationPending}>
@@ -243,6 +256,7 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
                 />
                 <span aria-hidden="true" />
               </label>
+              {plugin.enabled && placementPath(plugin) && <div className="plugin-placement-actions"><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "dashboard")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "dashboard") ? "从主页移除" : "添加到我的主页"}</button><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "ai-office")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "ai-office") ? "从 AI 办公移除" : "添加到 AI 办公"}</button></div>}
             </article>
           );
         })}

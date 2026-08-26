@@ -238,7 +238,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   }));
   app.use("/api", pluginGuard("lyj.system.ai-chat", [
     { path: "/ai-chat/persona", descendants: true }
-  ]), createAiPersonaRouter(paths));
+  ]), createAiPersonaRouter(paths, { gateway: aiGateway }));
   app.use("/api", pluginGuard("lyj.system.reminders", [
     { path: "/reminders", descendants: true },
     { path: "/reminder-attempts", descendants: true },

@@ -19,6 +19,11 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
     if (!editing) setProfile(initialProfile);
   }, [editing, initialProfile]);
 
+  function setEditorOpen(open: boolean) {
+    setEditing(open);
+    window.dispatchEvent(new CustomEvent("lyj:profile-editor", { detail: { open } }));
+  }
+
   async function save(input: ProfileUpdate, photo: File | null) {
     setIsSaving(true);
     setFeedback(null);
@@ -27,7 +32,7 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
       let saved: ProfileResponse = { ...profile, ...input };
       if (photo && onUploadPhoto) saved = await onUploadPhoto(photo);
       setProfile(saved);
-      setEditing(false);
+      setEditorOpen(false);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "保存失败，请稍后重试");
     } finally {
@@ -40,7 +45,7 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
       <section aria-label="个人信息编辑" className="profile-card profile-editor-card">
         <div className="card-heading"><div className="card-icon"><Icon name="user" /></div><div><span className="eyebrow">PROFILE</span><h2>编辑个人信息</h2></div></div>
         {feedback && <p role="alert">{feedback}</p>}
-        <ProfileEditor initialProfile={profile} isSaving={isSaving} onCancel={() => setEditing(false)} onSave={save} />
+        <ProfileEditor initialProfile={profile} isSaving={isSaving} onCancel={() => setEditorOpen(false)} onSave={save} />
       </section>
     );
   }
@@ -52,7 +57,7 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
           {profile.photoVersion !== null ? <img src={`/api/profile/photo?v=${profile.photoVersion}`} alt={`${profile.name}的头像`} /> : <span>{profile.name.trim().slice(0, 1).toUpperCase() || "LYJ"}</span>}
         </div>
         <div className="profile-identity"><span className="eyebrow">MY PROFILE</span><h2>{profile.name || "你好，欢迎回来"}</h2><p>{profile.employeeNumber ? `员工编号 ${profile.employeeNumber}` : "完善个人信息，让工作台真正属于你"}</p></div>
-        <button aria-label="编辑个人信息" className="button-secondary compact" type="button" onClick={() => { setFeedback(null); setEditing(true); }}><Icon name="edit" size={16} />编辑资料</button>
+        <button aria-label="编辑个人信息" className="button-secondary compact" type="button" onClick={() => { setFeedback(null); setEditorOpen(true); }}><Icon name="edit" size={16} />编辑资料</button>
       </div>
       <span className="sr-only">姓名：{profile.name || "未填写"}</span>
       <span className="sr-only">员工编号：{profile.employeeNumber || "未填写"}</span>

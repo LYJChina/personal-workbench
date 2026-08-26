@@ -94,13 +94,13 @@ export function Sidebar({ initialItems }: SidebarProps) {
       <div className="brand"><span className="brand-mark"><Icon name="grid" size={20} /></span><span><strong>{profileName}</strong><small>PERSONAL WORKBENCH</small></span></div>
       {error && <p role="alert">{error}</p>}
       <nav>
-        {items.filter((item) => item.visible).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)).map((item) => {
+        {items.filter((item) => item.visible && item.id !== "settings").sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)).map((item) => {
           const contributionIcon = contributionById.get(item.id)?.icon;
           const icon = <Icon name={navIcons[item.id] ?? iconName(contributionIcon)} />;
           return <NavLink key={item.id} to={item.path} end={item.path === "/"} className={({ isActive }) => isActive ? "active" : undefined}>{icon}<span>{item.label}</span></NavLink>;
         })}
       </nav>
-      <div className="sidebar-footer"><button className="button-ghost" type="button" onClick={() => setEditing(true)}><Icon name="edit" size={17} />编辑导航</button><p><span className="status-dot" /> 本地服务已连接</p></div>
+      <div className="sidebar-footer"><NavLink to="/settings" className={({ isActive }) => `sidebar-settings-link${isActive ? " active" : ""}`}><Icon name="settings" /><span>设置</span></NavLink><button className="button-ghost" type="button" onClick={() => setEditing(true)}><Icon name="edit" size={17} />编辑导航</button><p><span className="status-dot" /> 本地服务已连接</p></div>
     </aside>
   );
 }

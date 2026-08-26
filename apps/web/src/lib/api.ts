@@ -268,6 +268,7 @@ export const api = {
   updateAiPersona: (settings: AiPersonaSettingsUpdate) => requestJson<AiPersonaSettings>("/ai-chat/persona", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings)
   }),
+  generateAiPersona: () => requestJson<AiPersonaSettings>("/ai-chat/persona/generate", { method: "POST" }),
   getAppearance: () => requestJson<AppearancePreference>("/preferences/appearance"),
   updateAppearance: (appearance: AppearanceSettings) => requestJson<AppearanceSettings>("/preferences/appearance", {
     method: "PUT",

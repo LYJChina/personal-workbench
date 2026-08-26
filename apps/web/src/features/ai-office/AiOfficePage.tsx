@@ -4,6 +4,7 @@ import type { SurfaceLayoutItem } from "@workbench/contracts";
 import { Icon, type IconName } from "../../app/Icon";
 import { usePluginContributions } from "../../plugins/ContributionProvider";
 import { EditableSurfaceGrid } from "../layout/EditableSurfaceGrid";
+import { placementEvent, readPluginPlacements } from "../plugins/pluginPlacements";
 
 function iconName(value: string): IconName {
   const supported: IconName[] = ["home", "sparkles", "bell", "lock", "settings", "edit", "arrow", "user", "copy", "file", "palette", "mail", "check", "grid", "clock"];
@@ -31,7 +32,8 @@ function mergeLayout(tools: AiOfficeTool[], initialLayout: SurfaceLayoutItem[]):
 
 export function AiOfficePage({ initialLayout = emptyLayout, onSave, tools: toolsOverride }: AiOfficePageProps) {
   const { aiTools } = usePluginContributions();
-  const tools = toolsOverride ?? aiTools;
+  const [placedPlugins, setPlacedPlugins] = useState(() => readPluginPlacements().filter((item) => item.surface === "ai-office"));
+  const tools = useMemo(() => toolsOverride ?? [...aiTools, ...placedPlugins.map((plugin) => ({ id: `placed-${plugin.pluginId.replaceAll(".", "-")}`, label: plugin.name, path: plugin.path, icon: "grid", description: "插件快捷入口" }))], [aiTools, placedPlugins, toolsOverride]);
   const [layout, setLayout] = useState(() => {
     try { const stored = JSON.parse(localStorage.getItem("lyj.ai-office.layout") || "null"); return Array.isArray(stored) ? mergeLayout(tools, stored) : mergeLayout(tools, initialLayout); } catch { return mergeLayout(tools, initialLayout); }
   });
@@ -39,6 +41,7 @@ export function AiOfficePage({ initialLayout = emptyLayout, onSave, tools: tools
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { if (!editing) setLayout(mergeLayout(tools, initialLayout)); }, [editing, initialLayout, tools]);
+  useEffect(() => { const refresh = () => setPlacedPlugins(readPluginPlacements().filter((item) => item.surface === "ai-office")); window.addEventListener(placementEvent, refresh); return () => window.removeEventListener(placementEvent, refresh); }, []);
   const toolsById = useMemo(() => new Map(tools.map((tool) => [tool.id, tool])), [tools]);
 
   async function finishEditing() {

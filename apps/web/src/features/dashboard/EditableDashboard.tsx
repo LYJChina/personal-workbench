@@ -5,6 +5,8 @@ import { dailyQuote } from "./dailyQuotes";
 import { Icon } from "../../app/Icon";
 import { usePluginContributions } from "../../plugins/ContributionProvider";
 import { EditableSurfaceGrid } from "../layout/EditableSurfaceGrid";
+import { Link } from "react-router-dom";
+import { placementEvent, readPluginPlacements } from "../plugins/pluginPlacements";
 
 interface EditableDashboardProps {
   initialLayout: DashboardLayout[];
@@ -38,8 +40,18 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(() => now ?? new Date());
+  const [profileSnapshot, setProfileSnapshot] = useState<DashboardLayout[] | null>(null);
+  const [placedPlugins, setPlacedPlugins] = useState(() => readPluginPlacements().filter((item) => item.surface === "dashboard"));
   const contributionIds = dashboardModules.map((module) => module.id);
-  const effectiveLayout = useMemo(() => mergeDashboardLayout(layout, registry, contributionIds), [contributionIds, layout, registry]);
+  const placementRegistry = useMemo(() => Object.fromEntries(placedPlugins.map((plugin) => {
+    const id = `placed-${plugin.pluginId.replaceAll(".", "-")}` as DashboardLayout["moduleId"];
+    return [id, { id, title: plugin.name, minW: 4, minH: 3, render: () => <Link className="ai-tool-card" to={plugin.path}><span className="tool-content"><strong>{plugin.name}</strong><span>插件快捷入口</span></span><span className="tool-arrow">进入 →</span></Link> } satisfies ModuleDefinition];
+  })), [placedPlugins]);
+  const combinedRegistry = useMemo(() => ({ ...registry, ...placementRegistry }), [placementRegistry, registry]);
+  const allContributionIds = [...contributionIds, ...Object.keys(placementRegistry) as DashboardLayout["moduleId"][]];
+  const effectiveLayout = useMemo(() => mergeDashboardLayout(layout, combinedRegistry, allContributionIds), [allContributionIds, combinedRegistry, layout]);
+
+  useEffect(() => { const refresh = () => setPlacedPlugins(readPluginPlacements().filter((item) => item.surface === "dashboard")); window.addEventListener(placementEvent, refresh); return () => window.removeEventListener(placementEvent, refresh); }, []);
 
   useEffect(() => {
     if (now) {
@@ -53,6 +65,28 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
   useEffect(() => {
     if (!editing) setLayout(initialLayout);
   }, [editing, initialLayout]);
+
+  useEffect(() => {
+    const onProfileEditor = (event: Event) => {
+      const open = Boolean((event as CustomEvent<{ open?: boolean }>).detail?.open);
+      if (open) {
+        setLayout((current) => {
+          setProfileSnapshot(current);
+          const profile = current.find((item) => item.moduleId === "profile");
+          if (!profile) return current;
+          const expandedBottom = profile.y + Math.max(profile.h, 10);
+          return current.map((item) => item.moduleId === "profile"
+            ? { ...item, h: Math.max(item.h, 10) }
+            : item.y < expandedBottom && item.y + item.h > profile.y ? { ...item, y: expandedBottom } : item);
+        });
+      } else if (profileSnapshot) {
+        setLayout(profileSnapshot);
+        setProfileSnapshot(null);
+      }
+    };
+    window.addEventListener("lyj:profile-editor", onProfileEditor);
+    return () => window.removeEventListener("lyj:profile-editor", onProfileEditor);
+  }, [profileSnapshot]);
 
   async function finishEditing() {
     setSaving(true);
@@ -69,7 +103,7 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
   }
 
   const quote = dailyQuote(now ?? currentDate);
-  const surfaceItems = effectiveLayout.filter((item) => registry[item.moduleId]).map((item) => ({ ...item, itemId: item.moduleId, surface: "dashboard" as const }));
+  const surfaceItems = effectiveLayout.filter((item) => combinedRegistry[item.moduleId]).map((item) => ({ ...item, itemId: item.moduleId, surface: "dashboard" as const }));
 
   return (
     <section aria-label="工作台" className="dashboard-page">
@@ -81,10 +115,10 @@ export function EditableDashboard({ initialLayout, onSave, now }: EditableDashbo
       </div>
       {error && <p role="alert">{error}</p>}
       {editing && <div className="info-banner" role="status"><Icon name="grid" size={18} />拖动卡片调整位置，拖拽右下角调整大小。</div>}
-      <EditableSurfaceGrid testId="dashboard-grid" className="dashboard-grid" surface="dashboard" items={surfaceItems} editing={editing} onLayoutChange={(next) => setLayout((current) => mergeDashboardLayout(current, registry, contributionIds).map((item) => {
+      <EditableSurfaceGrid testId="dashboard-grid" className="dashboard-grid" surface="dashboard" items={surfaceItems} editing={editing} onLayoutChange={(next) => setLayout((current) => mergeDashboardLayout(current, combinedRegistry, allContributionIds).map((item) => {
           const changed = next.find((candidate) => candidate.itemId === item.moduleId);
           return changed ? { ...item, x: changed.x, y: changed.y, w: changed.w, h: changed.h } : item;
-        }))} renderItem={(item) => <div className="dashboard-module">{registry[item.itemId as DashboardLayout["moduleId"]]!.render()}</div>} />
+        }))} renderItem={(item) => <div className="dashboard-module">{combinedRegistry[item.itemId as DashboardLayout["moduleId"]]!.render()}</div>} />
     </section>
   );
 }
