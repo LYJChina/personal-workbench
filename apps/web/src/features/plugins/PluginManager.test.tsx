@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { PluginSummary } from "@workbench/contracts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginManager, type PluginManagerApi } from "./PluginManager";
 
 function summary(overrides: Partial<PluginSummary> & { id: string; name: string }): PluginSummary {
@@ -93,9 +94,19 @@ function createApi(items: PluginSummary[] = [running, stopped, failed]): PluginM
   return {
     getPlugins: vi.fn().mockResolvedValue(items),
     setPluginEnabled: vi.fn().mockImplementation(async (_id, enabled) => ({ ...running, enabled, runtimeStatus: enabled ? "running" : "stopped" })),
-    resetPluginSafeMode: vi.fn().mockResolvedValue(items)
+    resetPluginSafeMode: vi.fn().mockResolvedValue(items),
+    getAiOfficeOrder: vi.fn().mockResolvedValue([]),
+    updateAiOfficeOrder: vi.fn().mockImplementation(async (order) => order)
   };
 }
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 describe("PluginManager", () => {
   it("shows exact system plugin names, statuses, contribution summaries, and curated permissions only", async () => {
@@ -248,5 +259,69 @@ describe("PluginManager", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("系统插件暂时无法读取。其他设置仍可正常使用。");
     expect(document.body).not.toHaveTextContent(/SELECT|manifest_json|installed_plugins/);
+  });
+
+  it("reads and updates the database-backed AI Office order while preserving dashboard placement storage", async () => {
+    localStorage.setItem("lyj.plugin-placements.v1", JSON.stringify([
+      { pluginId: running.manifest.id, name: running.manifest.name, path: "/", surface: "dashboard" }
+    ]));
+    const pluginWithRoute = summary({
+      id: "lyj.system.ai-chat",
+      name: "大模型对话",
+      manifest: {
+        ...running.manifest,
+        contributions: [
+          { type: "route", id: "chat-page", path: "/ai-office/chat", component: "system.ai-chat.page" }
+        ]
+      }
+    });
+    const api = createApi([pluginWithRoute]) as PluginManagerApi & {
+      getAiOfficeOrder: ReturnType<typeof vi.fn>;
+      updateAiOfficeOrder: ReturnType<typeof vi.fn>;
+    };
+    const user = userEvent.setup();
+    render(<PluginManager api={api} refreshContributions={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "添加到 AI 办公" }));
+
+    expect(api.updateAiOfficeOrder).toHaveBeenCalledWith([{ itemId: pluginWithRoute.manifest.id, position: 0 }]);
+    expect(JSON.parse(localStorage.getItem("lyj.plugin-placements.v1") ?? "[]")).toEqual([
+      { pluginId: running.manifest.id, name: running.manifest.name, path: "/", surface: "dashboard" }
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "从主页移除" }));
+    expect(JSON.parse(localStorage.getItem("lyj.plugin-placements.v1") ?? "[]")).toEqual([]);
+  });
+
+  it("prevents duplicate AI Office placement mutations and shows fixed Chinese feedback on failure", async () => {
+    const placement = deferred<Array<{ itemId: string; position: number }>>();
+    const pluginWithRoute = summary({
+      id: "lyj.system.ai-chat",
+      name: "大模型对话",
+      manifest: {
+        ...running.manifest,
+        contributions: [
+          { type: "route", id: "chat-page", path: "/ai-office/chat", component: "system.ai-chat.page" }
+        ]
+      }
+    });
+    const api = createApi([pluginWithRoute]) as PluginManagerApi & {
+      getAiOfficeOrder: ReturnType<typeof vi.fn>;
+      updateAiOfficeOrder: ReturnType<typeof vi.fn>;
+    };
+    vi.mocked(api.updateAiOfficeOrder).mockReturnValue(placement.promise);
+    const user = userEvent.setup();
+    render(<PluginManager api={api} refreshContributions={vi.fn()} />);
+
+    const button = await screen.findByRole("button", { name: "添加到 AI 办公" });
+    await user.click(button);
+    await user.click(button);
+
+    expect(api.updateAiOfficeOrder).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "正在添加到 AI 办公…" })).toBeDisabled();
+
+    placement.reject(new Error("SQLITE_BUSY"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("AI 办公入口暂时无法更新，请稍后重试。");
+    expect(document.body).not.toHaveTextContent("SQLITE_BUSY");
   });
 });

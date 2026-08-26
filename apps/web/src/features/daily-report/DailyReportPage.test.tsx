@@ -52,6 +52,43 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("AI Office daily report flow", () => {
   it("navigates from the sidebar to the tool hub and then to the independent daily report page", async () => {
+    vi.spyOn(api, "getPlugins").mockResolvedValue([
+      {
+        manifest: {
+          manifestVersion: 1,
+          id: "lyj.system.ai-polish",
+          name: "AI 润色",
+          version: "1.0.0",
+          author: "测试",
+          kind: "system",
+          platforms: ["win32", "darwin"],
+          permissions: ["ai:use"],
+          contributions: [
+            {
+              type: "route",
+              id: "ai-polish-page",
+              path: "/ai-office/polish",
+              component: "system.ai-polish.page"
+            },
+            {
+              type: "ai-tool",
+              id: "ai-polish",
+              label: "AI 润色",
+              description: "日报、领导沟通、翻译和普通润色。",
+              path: "/ai-office/polish",
+              icon: "sparkles",
+              position: 10
+            }
+          ]
+        },
+        enabled: true,
+        required: false,
+        permissionsGranted: ["ai:use"],
+        runtimeStatus: "running",
+        errorCode: null
+      }
+    ]);
+    vi.spyOn(api, "getAiOfficeOrder").mockResolvedValue([{ itemId: "lyj.system.ai-polish", position: 0 }]);
     vi.spyOn(api, "getVaultStatus").mockResolvedValue({ configured: true, unlocked: true });
     vi.spyOn(api, "getNavigation").mockResolvedValue([
       { id: "home", label: "我的主页", path: "/", position: 0, visible: true, disabled: false },

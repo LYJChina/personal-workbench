@@ -13,6 +13,8 @@ import { readPluginPlacements, setPluginPlacement, type PluginPlacementSurface }
 
 export interface PluginManagerApi {
   getPlugins(signal?: AbortSignal): Promise<PluginSummary[]>;
+  getAiOfficeOrder(): Promise<Array<{ itemId: string; position: number }>>;
+  updateAiOfficeOrder(order: Array<{ itemId: string; position: number }>): Promise<Array<{ itemId: string; position: number }>>;
   setPluginEnabled(id: PluginId | string, enabled: boolean, signal?: AbortSignal): Promise<PluginSummary>;
   resetPluginSafeMode(signal?: AbortSignal): Promise<PluginSummary[]>;
 }
@@ -26,6 +28,7 @@ interface PluginManagerProps {
 const listError = "系统插件暂时无法读取。其他设置仍可正常使用。";
 const toggleError = "无法更改系统插件，请稍后重试。";
 const resetError = "无法恢复正常启动，请稍后重试。";
+const aiOfficePlacementError = "AI 办公入口暂时无法更新，请稍后重试。";
 const failedRecovery = "此功能暂时无法启动。关闭后再重新开启即可重试。";
 
 const permissionLabels: Record<PluginPermission, string> = {
@@ -80,9 +83,10 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
   const contributions = usePluginContributions();
   const refreshContributions = refreshOverride ?? contributions.refresh;
   const [plugins, setPlugins] = useState<PluginSummary[]>([]);
+  const [aiOfficeOrder, setAiOfficeOrder] = useState<Array<{ itemId: string; position: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ kind: "toggle"; id: string } | { kind: "reset" } | null>(null);
+  const [pending, setPending] = useState<{ kind: "toggle"; id: string } | { kind: "reset" } | { kind: "ai-office"; id: string; mode: "add" | "remove" } | null>(null);
   const [placements, setPlacements] = useState(() => readPluginPlacements());
   const mounted = useRef(false);
   const listGeneration = useRef(0);
@@ -101,9 +105,10 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
       setFeedback((current) => current === listError ? null : current);
     }
     try {
-      const loaded = await api.getPlugins(controller.signal);
+      const [loaded, order] = await Promise.all([api.getPlugins(controller.signal), api.getAiOfficeOrder()]);
       if (mounted.current && listGeneration.current === generation) {
         setPlugins(loaded.filter((plugin) => plugin.manifest.kind === kind));
+        setAiOfficeOrder(order);
       }
     } catch {
       if (mounted.current && listGeneration.current === generation && !controller.signal.aborted) {
@@ -198,6 +203,9 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
 
   const safeMode = plugins.some((plugin) => plugin.runtimeStatus === "safe-mode");
   const mutationPending = pending !== null;
+  function normalizeAiOfficeOrder(ids: string[]) {
+    return ids.map((itemId, position) => ({ itemId, position }));
+  }
   function placementPath(plugin: PluginSummary): string {
     const contribution = plugin.manifest.contributions.find((item) => item.type === "route" || item.type === "navigation" || item.type === "ai-tool");
     return contribution && "path" in contribution ? contribution.path : "/";
@@ -207,6 +215,40 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
     const enabled = !placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === surface);
     setPluginPlacement({ pluginId: plugin.manifest.id, name: plugin.manifest.name, path, surface }, enabled);
     setPlacements(readPluginPlacements());
+  }
+  async function toggleAiOfficePlacement(plugin: PluginSummary) {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    const generation = ++mutationGeneration.current;
+    const controller = new AbortController();
+    mutationController.current = controller;
+    const previousOrder = aiOfficeOrder;
+    const currentIds = previousOrder
+      .slice()
+      .sort((left, right) => left.position - right.position)
+      .map((item) => item.itemId);
+    const included = currentIds.includes(plugin.manifest.id);
+    const nextIds = included ? currentIds.filter((itemId) => itemId !== plugin.manifest.id) : [...currentIds, plugin.manifest.id];
+    const nextOrder = normalizeAiOfficeOrder(nextIds);
+    setFeedback(null);
+    setPending({ kind: "ai-office", id: plugin.manifest.id, mode: included ? "remove" : "add" });
+    setAiOfficeOrder(nextOrder);
+    try {
+      const saved = await api.updateAiOfficeOrder(nextOrder);
+      if (!mounted.current || mutationGeneration.current !== generation || controller.signal.aborted) return;
+      setAiOfficeOrder(saved);
+    } catch {
+      if (mounted.current && mutationGeneration.current === generation && !controller.signal.aborted) {
+        setAiOfficeOrder(previousOrder);
+        setFeedback(aiOfficePlacementError);
+      }
+    } finally {
+      if (mutationGeneration.current === generation) {
+        mutationInFlight.current = false;
+        mutationController.current = null;
+        if (mounted.current) setPending(null);
+      }
+    }
   }
 
   return (
@@ -255,7 +297,27 @@ export function PluginManager({ api = defaultApi, refreshContributions: refreshO
                 />
                 <span aria-hidden="true" />
               </label>
-              {plugin.enabled && <div className="plugin-placement-actions"><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "dashboard")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "dashboard") ? "从主页移除" : "添加到我的主页"}</button><button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "ai-office")}>{placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "ai-office") ? "从 AI 办公移除" : "添加到 AI 办公"}</button></div>}
+              {plugin.enabled && (
+                <div className="plugin-placement-actions">
+                  <button type="button" className="button-secondary compact" onClick={() => togglePlacement(plugin, "dashboard")}>
+                    {placements.some((item) => item.pluginId === plugin.manifest.id && item.surface === "dashboard") ? "从主页移除" : "添加到我的主页"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button-secondary compact"
+                    disabled={mutationPending}
+                    onClick={() => void toggleAiOfficePlacement(plugin)}
+                  >
+                    {pending?.kind === "ai-office" && pending.id === plugin.manifest.id
+                      ? pending.mode === "add"
+                        ? "正在添加到 AI 办公…"
+                        : "正在从 AI 办公移除…"
+                      : aiOfficeOrder.some((item) => item.itemId === plugin.manifest.id)
+                        ? "从 AI 办公移除"
+                        : "添加到 AI 办公"}
+                  </button>
+                </div>
+              )}
             </article>
           );
         })}

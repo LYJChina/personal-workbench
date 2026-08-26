@@ -64,6 +64,43 @@ const contributions = [
   }
 ];
 
+const aiOfficePlugins = [
+  {
+    manifest: {
+      manifestVersion: 1,
+      id: "lyj.system.ai-polish",
+      name: "AI 润色",
+      version: "1.0.0",
+      author: "测试",
+      kind: "system",
+      platforms: ["win32", "darwin"],
+      permissions: ["ai:use"],
+      contributions: [
+        {
+          type: "route",
+          id: "ai-polish-page",
+          path: "/ai-office/polish",
+          component: "system.ai-polish.page"
+        },
+        {
+          type: "ai-tool",
+          id: "ai-polish",
+          label: "AI 润色",
+          description: "日报、领导沟通、翻译和普通润色，按不同场景使用专属提示词。",
+          path: "/ai-office/polish",
+          icon: "sparkles",
+          position: 10
+        }
+      ]
+    },
+    enabled: true,
+    required: false,
+    permissionsGranted: ["ai:use"],
+    runtimeStatus: "running",
+    errorCode: null
+  }
+];
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -80,7 +117,9 @@ describe("complete application navigation", () => {
       const path = String(input);
       const method = init?.method ?? "GET";
       if (path === "/api/vault/status") return json({ configured: true, unlocked: true });
+      if (path === "/api/plugins") return json(aiOfficePlugins);
       if (path === "/api/plugins/contributions") return json(contributions);
+      if (path === "/api/preferences/ai-office-order") return json([{ itemId: "lyj.system.ai-polish", position: 0 }]);
       if (path === "/api/preferences/navigation") return json(navigation);
       if (path === "/api/preferences/layout" && method === "GET") return json(layout);
       if (path === "/api/preferences/layout" && method === "PUT") return json(JSON.parse(String(init?.body)));

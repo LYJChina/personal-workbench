@@ -39,6 +39,8 @@ function createApi(): SettingsApi {
     testMailConnection: vi.fn().mockResolvedValue({ status: "success", message: "连接成功" }),
     exportDatabase: vi.fn().mockResolvedValue("LYJWorkBench-backup-2026-08-23.sqlite"),
     getPlugins: vi.fn().mockResolvedValue([]),
+    getAiOfficeOrder: vi.fn().mockResolvedValue([]),
+    updateAiOfficeOrder: vi.fn().mockImplementation(async (order) => order),
     setPluginEnabled: vi.fn(),
     resetPluginSafeMode: vi.fn().mockResolvedValue([])
     ,getVaultRecoveryStatus: vi.fn().mockResolvedValue({ state: "disabled", maskedEmail: null, smtpHealth: "unknown", checkedAt: null })

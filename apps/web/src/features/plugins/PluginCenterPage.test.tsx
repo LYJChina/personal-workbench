@@ -14,7 +14,13 @@ const plugin = (id: string, kind: "system" | "third-party"): PluginSummary => ({
 
 describe("PluginCenterPage", () => {
   it("separates system and third-party plugins using the existing plugin list API", async () => {
-    const api = { getPlugins: vi.fn(async () => [plugin("lyj.system.calendar", "system"), plugin("lyj.plugin.weather", "third-party")]), setPluginEnabled: vi.fn(), resetPluginSafeMode: vi.fn() };
+    const api = {
+      getPlugins: vi.fn(async () => [plugin("lyj.system.calendar", "system"), plugin("lyj.plugin.weather", "third-party")]),
+      getAiOfficeOrder: vi.fn(async () => []),
+      updateAiOfficeOrder: vi.fn(async (order) => order),
+      setPluginEnabled: vi.fn(),
+      resetPluginSafeMode: vi.fn()
+    };
     render(<PluginCenterPage api={api} refreshContributions={vi.fn()} />);
 
     expect(await screen.findByRole("heading", { name: "系统插件" })).toBeVisible();

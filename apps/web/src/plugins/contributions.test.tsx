@@ -82,6 +82,77 @@ const enabledContributions: ContributionEntry[] = [
   }
 ];
 
+const aiOfficePlugins = [
+  {
+    manifest: {
+      manifestVersion: 1,
+      id: "lyj.system.daily-reports",
+      name: "日报生成",
+      version: "1.0.0",
+      author: "测试",
+      kind: "system",
+      platforms: ["win32", "darwin"],
+      permissions: ["ai:use"],
+      contributions: [
+        {
+          type: "ai-tool",
+          id: "daily-report",
+          label: "日报生成",
+          description: "整理工作进展、风险和下一步计划。",
+          path: "/ai-office/daily-report",
+          icon: "file",
+          position: 20
+        },
+        {
+          type: "route",
+          id: "daily-report-page",
+          path: "/ai-office/daily-report",
+          component: "system.daily-reports.page"
+        }
+      ]
+    },
+    enabled: true,
+    required: false,
+    permissionsGranted: ["ai:use"],
+    runtimeStatus: "running",
+    errorCode: null
+  },
+  {
+    manifest: {
+      manifestVersion: 1,
+      id: "lyj.system.ai-polish",
+      name: "AI 润色",
+      version: "1.0.0",
+      author: "测试",
+      kind: "system",
+      platforms: ["win32", "darwin"],
+      permissions: ["ai:use"],
+      contributions: [
+        {
+          type: "ai-tool",
+          id: "ai-polish",
+          label: "AI 润色",
+          description: "日报、领导沟通、翻译和普通润色。",
+          path: "/ai-office/polish",
+          icon: "sparkles",
+          position: 10
+        },
+        {
+          type: "route",
+          id: "ai-polish-page",
+          path: "/ai-office/polish",
+          component: "system.ai-polish.page"
+        }
+      ]
+    },
+    enabled: true,
+    required: false,
+    permissionsGranted: ["ai:use"],
+    runtimeStatus: "running",
+    errorCode: null
+  }
+];
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -97,9 +168,16 @@ function createFetch(contributions: () => ContributionEntry[] | Response | Promi
     const path = String(input);
     const method = init?.method ?? "GET";
     if (path === "/api/vault/status") return json({ configured: true, unlocked: true });
+    if (path === "/api/plugins") return json(aiOfficePlugins);
     if (path === "/api/plugins/contributions") {
       const result = await contributions();
       return result instanceof Response ? result : json(result);
+    }
+    if (path === "/api/preferences/ai-office-order") {
+      return json([
+        { itemId: "lyj.system.ai-polish", position: 0 },
+        { itemId: "lyj.system.daily-reports", position: 1 }
+      ]);
     }
     if (path === "/api/preferences/navigation") return json(navigation);
     if (path === "/api/preferences/layout" && method === "GET") return json(layout);
@@ -375,8 +453,7 @@ describe("server-declared web contributions", () => {
     await user.click(screen.getByRole("link", { name: "我的主页" }));
     expect(screen.queryByRole("region", { name: "大模型对话" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
-    expect(screen.queryByRole("link", { name: "AI 润色" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "日报生成" })).not.toBeInTheDocument();
+    expect(screen.getByText("正在准备 AI 办公…")).toBeVisible();
     expect(layoutSave).not.toHaveBeenCalled();
 
     disabled.resolve(json([]));
@@ -388,8 +465,7 @@ describe("server-declared web contributions", () => {
     expect(layoutSave).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("link", { name: "AI 办公" }));
-    expect(screen.queryByRole("link", { name: "AI 润色" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "日报生成" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getAllByRole("link", { name: /AI 润色|日报生成/ }).map((link) => link.getAttribute("aria-label"))).toEqual(originalToolOrder);
     await user.click(screen.getByRole("button", { name: "编辑导航" }));
     await user.click(screen.getByRole("button", { name: "保存导航" }));
     const navigationSave = fetchMock.mock.calls.find(([path, init]) => String(path) === "/api/preferences/navigation" && (init as RequestInit | undefined)?.method === "PUT");
