@@ -31,6 +31,7 @@ export function Sidebar({ initialItems }: SidebarProps) {
   const [preferences, setPreferences] = useState<NavigationItem[]>(initialItems ?? fallbackPreferences);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState("LYJ");
 
   useEffect(() => {
     if (initialItems) {
@@ -39,6 +40,7 @@ export function Sidebar({ initialItems }: SidebarProps) {
     }
     api.getNavigation().then(setPreferences).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "导航加载失败"));
   }, [initialItems]);
+  useEffect(() => { void api.getProfile().then((profile) => setProfileName(profile.name.trim() || "LYJ")).catch(() => undefined); }, []);
 
   const coreIds = new Set<NavigationItem["id"]>(["home", "ai-office", "plugins", "password-manager", "settings"]);
   const preferenceById = new Map(preferences.map((item) => [item.id, item]));
@@ -89,7 +91,7 @@ export function Sidebar({ initialItems }: SidebarProps) {
 
   return (
     <aside aria-label="主导航" className="sidebar">
-      <div className="brand"><span className="brand-mark"><Icon name="grid" size={20} /></span><span><strong>LYJ</strong><small>PERSONAL WORKBENCH</small></span></div>
+      <div className="brand"><span className="brand-mark"><Icon name="grid" size={20} /></span><span><strong>{profileName}</strong><small>PERSONAL WORKBENCH</small></span></div>
       {error && <p role="alert">{error}</p>}
       <nav>
         {items.filter((item) => item.visible).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)).map((item) => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { AiChatMessage } from "@workbench/contracts";
+import type { AiPersonaSettings } from "@workbench/contracts";
 import { api as sharedApi } from "../../lib/api";
 import { Icon } from "../../app/Icon";
 
@@ -25,6 +26,7 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [persona, setPersona] = useState<AiPersonaSettings | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [api]);
+  useEffect(() => { void sharedApi.getAiPersona?.().then(setPersona).catch(() => undefined); }, []);
 
   useEffect(() => {
     const log = logRef.current;
@@ -85,9 +88,10 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
     }
   }
 
-  return <section className="dashboard-card ai-chat-card" aria-label="大模型对话">
+  const assistantName = persona?.assistantName || "AI";
+  return <section className="dashboard-card ai-chat-card" aria-label={`问问${assistantName}`}>
     <header>
-      <div className="ai-chat-title"><span className="card-icon violet"><Icon name="sparkles" size={18} /></span><div><h3>问问 AI</h3><small>使用你在设置中配置的模型</small></div></div>
+      <div className="ai-chat-title"><span className="card-icon violet"><Icon name="sparkles" size={18} /></span><div><h3>问问 {assistantName}</h3><small>使用你在设置中配置的模型</small></div></div>
       <button className="button-ghost compact" type="button" disabled={loading || sending} onClick={() => void clearConversation()}>新对话</button>
     </header>
     <div className="ai-chat-log" role="log" aria-label="大模型对话记录" aria-live="polite" ref={logRef}>
@@ -95,7 +99,7 @@ export function AiChatCard({ api = defaultApi }: { api?: AiChatCardApi }) {
         ? <div className="ai-chat-empty"><span className="spinner" />正在读取本地对话…</div>
         : messages.length === 0
           ? <div className="ai-chat-empty"><Icon name="sparkles" size={22} /><strong>随时问我一个问题</strong><span>例如：帮我整理今天的工作重点</span></div>
-          : messages.map((message) => <article className={`ai-chat-message ${message.role}`} key={message.id}><span>{message.role === "user" ? "我" : "AI"}</span><p>{message.content}</p></article>)}
+          : messages.map((message) => <article className={`ai-chat-message ${message.role}`} key={message.id}><span>{message.role === "user" ? "我" : assistantName}</span><p>{message.content}</p></article>)}
       {sending && <div className="ai-chat-thinking"><span className="spinner" />正在思考…</div>}
     </div>
     {error && <p className="ai-chat-error" role="alert">{error}</p>}
