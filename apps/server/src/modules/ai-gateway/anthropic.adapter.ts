@@ -21,7 +21,7 @@ export class AnthropicAdapter implements AiProviderAdapter {
     const abort = () => controller.abort();
     input.signal?.addEventListener("abort", abort, { once: true });
     if (input.signal?.aborted) controller.abort();
-    const timeout = setTimeout(abort, 30_000);
+    const timeout = setTimeout(abort, input.timeoutMs ?? 30_000);
     const system = input.messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
     const messages = input.messages
       .filter((message): message is typeof message & { role: "user" | "assistant" } => message.role !== "system")

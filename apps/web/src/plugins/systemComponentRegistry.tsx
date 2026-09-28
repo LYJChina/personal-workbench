@@ -6,6 +6,7 @@ import { DailyReportPage } from "../features/daily-report/DailyReportPage";
 import { ReminderPage } from "../features/reminders/ReminderPage";
 import { UpcomingRemindersCard } from "../features/reminders/UpcomingRemindersCard";
 import { PasswordManagerPage } from "../features/password-manager/PasswordManagerPage";
+import { ModelDigestPage } from "../features/model-digest/ModelDigestPage";
 
 export const systemComponentRegistry = {
   "system.ai-chat.dashboard": AiChatCard,
@@ -14,7 +15,8 @@ export const systemComponentRegistry = {
   "system.workday-calendar.dashboard": WorkdayCalendarCard,
   "system.reminders.page": ReminderPage,
   "system.reminders.dashboard": UpcomingRemindersCard,
-  "system.password-manager.page": PasswordManagerPage
+  "system.password-manager.page": PasswordManagerPage,
+  "system.model-digest.page": ModelDigestPage
 } satisfies Record<string, ComponentType>;
 
 export type SystemComponentToken = keyof typeof systemComponentRegistry;

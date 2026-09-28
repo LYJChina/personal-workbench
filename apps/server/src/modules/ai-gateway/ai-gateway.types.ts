@@ -26,6 +26,8 @@ export interface AiCompletionInput {
   messages: AiGatewayMessage[];
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
+  reasoningMode?: "none";
   signal?: AbortSignal;
 }
 

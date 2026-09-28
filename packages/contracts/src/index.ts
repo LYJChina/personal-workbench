@@ -4,6 +4,10 @@ export * from "./plugins";
 export * from "./surfaces";
 export * from "./password-manager";
 export * from "./ai-persona";
+export * from "./profile-emails";
+export * from "./model-digest";
+
+import { ProfileEmailInputsSchema, ProfileEmailsSchema } from "./profile-emails";
 
 export const WORKBENCH_MUTATION_HEADER_NAME = "X-LYJ-Workbench-Request";
 export const WORKBENCH_MUTATION_HEADER_VALUE = "local-browser-v1";
@@ -79,6 +83,7 @@ export const ProfileSchema = z.object({
   birthday: z.string(),
   employeeNumber: z.string(),
   customFields: z.array(CustomFieldSchema),
+  emails: ProfileEmailsSchema.default([]),
   photoVersion: z.number().int().positive().nullable()
 });
 
@@ -90,7 +95,8 @@ export const ProfileUpdateSchema = ProfileSchema.pick({
 }).extend({
   name: z.string().trim().min(1).max(100),
   birthday: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]),
-  employeeNumber: z.string().trim().min(1).max(100)
+  employeeNumber: z.string().trim().min(1).max(100),
+  emails: ProfileEmailInputsSchema.default([])
 });
 
 export const PreferenceContributionIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);

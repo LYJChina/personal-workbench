@@ -5,18 +5,18 @@ import { Icon } from "../../app/Icon";
 
 interface ProfileCardProps {
   initialProfile: ProfileResponse;
-  onSave: (input: ProfileUpdate) => Promise<void>;
+  onSave: (input: ProfileUpdate) => Promise<void | ProfileResponse>;
   onUploadPhoto?: (photo: File) => Promise<ProfileResponse>;
 }
 
 export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCardProps) {
-  const [profile, setProfile] = useState(initialProfile);
+  const [profile, setProfile] = useState({ ...initialProfile, emails: initialProfile.emails ?? [] });
   const [editing, setEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!editing) setProfile(initialProfile);
+    if (!editing) setProfile({ ...initialProfile, emails: initialProfile.emails ?? [] });
   }, [editing, initialProfile]);
 
   function setEditorOpen(open: boolean) {
@@ -28,10 +28,14 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
     setIsSaving(true);
     setFeedback(null);
     try {
-      await onSave(input);
-      let saved: ProfileResponse = { ...profile, ...input };
+      const result = await onSave(input);
+      let saved: ProfileResponse = result ?? { ...profile, ...input, emails: input.emails.map((email) => ({
+        id: email.id ?? globalThis.crypto.randomUUID(),
+        label: email.label,
+        address: email.address
+      })) };
       if (photo && onUploadPhoto) saved = await onUploadPhoto(photo);
-      setProfile(saved);
+      setProfile({ ...saved, emails: saved.emails ?? [] });
       setEditorOpen(false);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "保存失败，请稍后重试");
@@ -64,6 +68,7 @@ export function ProfileCard({ initialProfile, onSave, onUploadPhoto }: ProfileCa
       <div className="profile-details">
         <div><span>生日</span><strong>{profile.birthday || "未填写"}</strong></div>
         <div><span>员工编号</span><strong>{profile.employeeNumber || "未填写"}</strong></div>
+        {(profile.emails ?? []).map((email) => <div key={email.id}><span>{email.label}</span><strong>{email.address}</strong></div>)}
         {profile.customFields.map((field) => <div key={`${field.label}-${field.value}`}><span>{field.label}</span><strong>{field.value || "未填写"}</strong></div>)}
       </div>
     </section>

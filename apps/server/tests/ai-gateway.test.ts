@@ -158,6 +158,47 @@ describe("provider-neutral AI gateway", () => {
     expect(providerSignal?.aborted).toBe(true);
   });
 
+  it("turns off DeepSeek thinking when a factual completion requests it", async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({
+      model: "deepseek-v4-pro",
+      choices: [{ message: { content: "摘要" } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const adapter = new OpenAiAdapter(fetchMock as typeof fetch);
+
+    await adapter.complete({ ...openAiConnection, baseUrl: "https://api.deepseek.com", model: "deepseek-v4-pro" }, "key", {
+      messages: [{ role: "user", content: "Summarize the supplied facts" }],
+      reasoningMode: "none"
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.thinking).toEqual({ type: "disabled" });
+  });
+
+  it.each([
+    ["OpenAI", openAiConnection, (fetchImplementation: typeof fetch) => new OpenAiAdapter(fetchImplementation)],
+    ["Anthropic", anthropicConnection, (fetchImplementation: typeof fetch) => new AnthropicAdapter(fetchImplementation)]
+  ] as const)("allows a longer timeout for a %s completion", async (_name, connection, createAdapter) => {
+    vi.useFakeTimers();
+    let providerSignal: AbortSignal | null | undefined;
+    const fetchImplementation = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      providerSignal = init?.signal;
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }) as typeof fetch;
+    const pending = createAdapter(fetchImplementation).complete(connection, "timeout-secret", {
+      messages: [{ role: "user", content: "Summarize" }],
+      timeoutMs: 90_000
+    });
+    const rejection = expect(pending).rejects.toMatchObject({ category: "timeout" });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(providerSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await rejection;
+    expect(providerSignal?.aborted).toBe(true);
+  });
+
   it.each([
     ["OpenAI", openAiConnection, (fetchImplementation: typeof fetch) => new OpenAiAdapter(fetchImplementation)],
     ["Anthropic", anthropicConnection, (fetchImplementation: typeof fetch) => new AnthropicAdapter(fetchImplementation)]

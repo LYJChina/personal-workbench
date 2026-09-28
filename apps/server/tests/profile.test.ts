@@ -38,6 +38,36 @@ describe("personal profile API", () => {
     expect(loaded.body.customFields).toEqual([{ label: "部门", value: "运营部" }]);
   });
 
+  it("persists multiple labeled recipient emails across app instances", async () => {
+    const app = createApp({ dataDir: tempDir });
+    const saved = await request(app).put("/api/profile").send({
+      name: "李雨佳", birthday: "", employeeNumber: "LYJ-001", customFields: [],
+      emails: [
+        { label: "工作邮箱", address: "work@example.com" },
+        { label: "个人邮箱", address: "personal@example.com" }
+      ]
+    });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.emails).toHaveLength(2);
+    expect(saved.body.emails.map((email: { address: string }) => email.address)).toEqual(["work@example.com", "personal@example.com"]);
+    const loaded = await request(createApp({ dataDir: tempDir })).get("/api/profile");
+    expect(loaded.body.emails).toEqual(saved.body.emails);
+  });
+
+  it("rejects duplicate profile email addresses", async () => {
+    const response = await request(createApp({ dataDir: tempDir })).put("/api/profile").send({
+      name: "李雨佳", birthday: "", employeeNumber: "LYJ-001", customFields: [],
+      emails: [
+        { label: "工作邮箱", address: "user@example.com" },
+        { label: "重复邮箱", address: "USER@example.com" }
+      ]
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("rejects invalid profile input", async () => {
     const response = await request(createApp({ dataDir: tempDir })).put("/api/profile").send({
       name: "",

@@ -36,6 +36,7 @@
 | `apps/web/src/features/profile/ProfileCard.tsx` | Keep the saved profile response, including emails, current after save. |
 | `apps/server/src/modules/model-digest/huggingface-source.ts` | Fetch and normalize Hugging Face trending models. |
 | `apps/server/src/modules/model-digest/openrouter-source.ts` | Fetch and normalize OpenRouter ranking data. |
+| `apps/server/src/modules/model-digest/source-http.ts` | Bound source request time/response size and map upstream failures safely. |
 | `apps/server/src/modules/model-digest/model-digest.repository.ts` | Persist settings, serialized runs, status transitions, and latest successful digest. |
 | `apps/server/src/modules/model-digest/model-digest.service.ts` | Orchestrate source collection, AI summary, persistence, and optional/scheduled email. |
 | `apps/server/src/modules/model-digest/model-digest.scheduler.ts` | Run the scheduled workday job once per Shanghai local date and expose start/stop. |

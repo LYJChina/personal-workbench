@@ -34,6 +34,10 @@ export function ProfileEditor({ initialProfile, isSaving, onCancel, onSave }: Pr
     profile.customFields.forEach((field, index) => {
       if (!field.label.trim()) nextErrors[`customFields.${index}.label`] = "请输入自定义信息标签";
     });
+    profile.emails.forEach((email, index) => {
+      if (!email.label.trim()) nextErrors[`emails.${index}.label`] = "请输入邮箱名称";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.address.trim())) nextErrors[`emails.${index}.address`] = "请输入有效邮箱地址";
+    });
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) onSave(profile, photo);
   }
@@ -59,6 +63,26 @@ export function ProfileEditor({ initialProfile, isSaving, onCancel, onSave }: Pr
         <input aria-invalid={Boolean(errors.employeeNumber)} value={profile.employeeNumber} onChange={(event) => updateField("employeeNumber", event.target.value)} />
       </label>
       {errors.employeeNumber && <p role="alert">{errors.employeeNumber}</p>}
+      <fieldset>
+        <legend>邮箱</legend>
+        <p>添加可用于接收工作台邮件的邮箱；模型总结可以选择一个或多个。</p>
+        {profile.emails.map((email, index) => (
+          <div className="profile-email-row" key={email.id ?? `new-${index}`}>
+            <label>
+              名称
+              <input aria-invalid={Boolean(errors[`emails.${index}.label`])} value={email.label} onChange={(event) => setProfile((current) => ({ ...current, emails: current.emails.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) }))} />
+            </label>
+            {errors[`emails.${index}.label`] && <p role="alert">{errors[`emails.${index}.label`]}</p>}
+            <label>
+              邮箱地址
+              <input type="email" aria-invalid={Boolean(errors[`emails.${index}.address`])} value={email.address} onChange={(event) => setProfile((current) => ({ ...current, emails: current.emails.map((item, itemIndex) => itemIndex === index ? { ...item, address: event.target.value } : item) }))} />
+            </label>
+            {errors[`emails.${index}.address`] && <p role="alert">{errors[`emails.${index}.address`]}</p>}
+            <button type="button" onClick={() => setProfile((current) => ({ ...current, emails: current.emails.filter((_, itemIndex) => itemIndex !== index) }))}>删除邮箱</button>
+          </div>
+        ))}
+        <button type="button" onClick={() => setProfile((current) => ({ ...current, emails: [...current.emails, { label: "", address: "" }] }))}>添加邮箱</button>
+      </fieldset>
       <fieldset>
         <legend>自定义信息</legend>
         {profile.customFields.map((field, index) => {

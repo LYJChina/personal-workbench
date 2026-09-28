@@ -7,6 +7,7 @@ const emptyProfile = {
   birthday: "",
   employeeNumber: "",
   customFields: [],
+  emails: [],
   photoVersion: null
 };
 

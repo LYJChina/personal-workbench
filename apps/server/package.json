@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "node scripts/dev.mjs",
     "build": "node ../../scripts/clean-server-dist.mjs && tsc --noEmit && tsc -p tsconfig.runtime.json",
     "test": "vitest --configLoader runner run",
     "check": "tsc --noEmit"

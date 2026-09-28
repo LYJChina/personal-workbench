@@ -17,6 +17,7 @@ const emptyProfile: ProfileResponse = {
   birthday: "",
   employeeNumber: "",
   customFields: [],
+  emails: [],
   photoVersion: null
 };
 
@@ -28,8 +29,10 @@ function ProfileModule() {
     api.getProfile().then(setProfile).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "个人信息加载失败"));
   }, []);
 
-  async function saveProfile(input: ProfileUpdate) {
-    setProfile(await api.updateProfile(input));
+  async function saveProfile(input: ProfileUpdate): Promise<ProfileResponse> {
+    const saved = await api.updateProfile(input);
+    setProfile(saved);
+    return saved;
   }
 
   async function uploadPhoto(photo: File) {

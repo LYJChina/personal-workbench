@@ -8,7 +8,8 @@ const INSTANCE_HEADER = "X-LYJ-Workbench-Instance";
 const CHILD_ENV_ALLOWLIST = new Set([
   "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
   "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA",
-  "LANG", "LC_ALL", "TZ", "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR"
+  "LANG", "LC_ALL", "TZ", "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR",
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"
 ]);
 
 function parsePort(value) {
@@ -73,6 +74,7 @@ export function buildChildEnvironment(env, { port, instanceToken }) {
   return {
     ...buildOperationalEnvironment(env),
     NODE_ENV: "production",
+    NODE_USE_ENV_PROXY: "1",
     HOST: "127.0.0.1",
     PORT: String(port),
     LYJ_WORKBENCH_INSTANCE_TOKEN: instanceToken,

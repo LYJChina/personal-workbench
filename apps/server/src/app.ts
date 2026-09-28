@@ -50,6 +50,11 @@ import { SettingsRepository } from "./modules/settings/settings.repository.js";
 import { PasswordManagerService } from "./modules/password-manager/password-manager.service.js";
 import { createPasswordManagerRepositoryProvider } from "./modules/password-manager/password-manager.repository.js";
 import { createPasswordManagerRouter, passwordManagerNoStore } from "./modules/password-manager/password-manager.routes.js";
+import { EmailNotificationChannel } from "./modules/reminders/email-channel.js";
+import { ModelDigestRepository } from "./modules/model-digest/model-digest.repository.js";
+import { ModelDigestService } from "./modules/model-digest/model-digest.service.js";
+import { ModelDigestScheduler } from "./modules/model-digest/model-digest.scheduler.js";
+import { createModelDigestRouter } from "./modules/model-digest/model-digest.routes.js";
 
 export interface CreateAppOptions {
   dataDir?: string;
@@ -65,6 +70,9 @@ export interface CreateAppOptions {
   aiGateway?: Pick<AiGateway, "complete">;
   aiConnectionTester?: (id: string, signal: AbortSignal) => Promise<void>;
   reminderChannel?: NotificationChannel;
+  modelDigestChannel?: NotificationChannel;
+  modelDigestNow?: () => Date;
+  startModelDigestScheduler?: boolean;
   holidayYearLoader?: HolidayYearLoader;
   now?: () => Date;
   webDistDir?: string;
@@ -143,6 +151,33 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const aiConnectionTester = options.aiConnectionTester ?? ((id: string, signal: AbortSignal) => kernelAiGateway.testConnection(id, signal));
 
   const passwordManager = new PasswordManagerService(createPasswordManagerRepositoryProvider(paths));
+  const modelDigestRepository = new ModelDigestRepository(() => openOperationalDatabase(paths));
+  const modelDigestChannel = options.modelDigestChannel ?? new EmailNotificationChannel({
+    secretStore,
+    loadSettings: (configured) => {
+      const database = openOperationalDatabase(paths);
+      try { return new SettingsRepository(database).getMailSettings(configured); }
+      finally { database.close(); }
+    }
+  });
+  const modelDigestService = new ModelDigestService(modelDigestRepository, aiGateway, modelDigestChannel, {
+    now: options.modelDigestNow,
+    readiness: async () => {
+      const connection = aiConnectionRepository.getDefault();
+      const [aiKey, smtpPassword] = await Promise.all([
+        connection ? secretStore.readSecret(connection.secretName).catch(() => null) : Promise.resolve(null),
+        secretStore.readSecret("smtp-password").catch(() => null)
+      ]);
+      const database = openOperationalDatabase(paths);
+      let mail;
+      try { mail = new SettingsRepository(database).getMailSettings(Boolean(smtpPassword)); }
+      finally { database.close(); }
+      return {
+        aiConfigured: Boolean(connection && aiKey),
+        smtpConfigured: Boolean(smtpPassword && mail.smtpHost && mail.fromAddress && mail.smtpPort >= 1 && mail.smtpPort <= 65_535)
+      };
+    }
+  });
   app.use(passwordManagerNoStore);
   app.use(enforceLocalRequestBoundary);
   app.use(express.json());
@@ -239,6 +274,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api", pluginGuard("lyj.system.ai-chat", [
     { path: "/ai-chat/persona", descendants: true }
   ]), createAiPersonaRouter(paths, { gateway: aiGateway }));
+  app.use("/api", pluginGuard("lyj.system.model-digest", [
+    { path: "/model-digest", descendants: true }
+  ]), createModelDigestRouter(modelDigestService));
   app.use("/api", pluginGuard("lyj.system.reminders", [
     { path: "/reminders", descendants: true },
     { path: "/reminder-attempts", descendants: true },
@@ -305,6 +343,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
     console.error("Unhandled server error");
     response.status(500).json({ error: { message: "Internal Server Error", code: "INTERNAL_ERROR" } });
   });
+
+  if (options.startModelDigestScheduler) {
+    const stop = new ModelDigestScheduler(modelDigestService, options.modelDigestNow).start();
+    app.locals.stopModelDigestScheduler = stop;
+  }
 
   return app;
 }

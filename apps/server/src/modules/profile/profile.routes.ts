@@ -61,7 +61,15 @@ export function createProfileRouter(paths: AppPaths, options: ProfileRouterOptio
       response.status(400).json({ error: { message: "Profile validation failed", code: "VALIDATION_ERROR", fields: parsed.error.flatten().fieldErrors } });
       return;
     }
-    response.json(repositoryFor(response).update(parsed.data));
+    try {
+      response.json(repositoryFor(response).update(parsed.data));
+    } catch (reason) {
+      if (reason instanceof Error && reason.message === "profile_email_id_conflict") {
+        response.status(400).json({ error: { message: "个人邮箱列表已变化，请重新加载后再保存。", code: "PROFILE_EMAIL_CONFLICT" } });
+        return;
+      }
+      throw reason;
+    }
   });
 
   router.post("/profile/photo", upload.single("photo"), (request, response, next) => {

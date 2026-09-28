@@ -21,7 +21,7 @@ export class OpenAiAdapter implements AiProviderAdapter {
     const abort = () => controller.abort();
     input.signal?.addEventListener("abort", abort, { once: true });
     if (input.signal?.aborted) controller.abort();
-    const timeout = setTimeout(abort, 30_000);
+    const timeout = setTimeout(abort, input.timeoutMs ?? 30_000);
     try {
       const response = await this.fetchImplementation(providerUrl(connection.baseUrl, "chat/completions"), {
         method: "POST",
@@ -30,7 +30,10 @@ export class OpenAiAdapter implements AiProviderAdapter {
           model: connection.model,
           messages: input.messages,
           temperature: input.temperature ?? 0.7,
-          max_tokens: input.maxTokens ?? 2_000
+          max_tokens: input.maxTokens ?? 2_000,
+          ...(input.reasoningMode === "none" && new URL(connection.baseUrl).hostname === "api.deepseek.com"
+            ? { thinking: { type: "disabled" } }
+            : {})
         }),
         signal: controller.signal,
         redirect: "manual"

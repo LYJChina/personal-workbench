@@ -60,7 +60,7 @@ describe("plugin schema and repository", () => {
 
     const upgraded = openDatabase(paths);
     try {
-      expect(upgraded.pragma("user_version", { simple: true })).toBe(7);
+      expect(upgraded.pragma("user_version", { simple: true })).toBe(10);
       expect(upgraded.prepare("SELECT value FROM app_settings WHERE key = ?").pluck().get("preserve-me")).toBe("preserved-value");
       expect(upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'installed_plugins'").pluck().get()).toBe("installed_plugins");
     } finally {
@@ -68,7 +68,7 @@ describe("plugin schema and repository", () => {
     }
   });
 
-  it("reconciles five system manifests idempotently without enabling an unknown plugin", async () => {
+  it("reconciles compiled system manifests idempotently without enabling an unknown plugin", async () => {
     const { database, repository } = await createRepository();
     try {
       const manifests = systemManifests();

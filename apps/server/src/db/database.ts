@@ -12,7 +12,7 @@ interface LegacyProfilePhotoRow { photo_filename: string | null; photo_blob: Buf
 const maxPhotoBytes = 5 * 1024 * 1024;
 const migrationLockBudgetMs = 5_000;
 const busyRetrySignal = new Int32Array(new SharedArrayBuffer(4));
-export const currentSchemaVersion = 7;
+export const currentSchemaVersion = 10;
 const futureSchemaError = "Database schema version is newer than supported";
 const invalidRecoveryError = "Database migration recovery snapshot is invalid";
 
@@ -97,6 +97,13 @@ function migrateVaultRecovery(database: Database.Database, sql: string): void {
   if (!columns.some((column) => column.name === "format_version")) {
     database.exec("ALTER TABLE vault_metadata ADD COLUMN format_version INTEGER NOT NULL DEFAULT 1 CHECK (format_version IN (1, 2))");
   }
+}
+
+function migrateModelDigestHistory(database: Database.Database, sql: string): void {
+  const columns = new Set((database.pragma("table_info(model_digest_runs)") as TableColumn[]).map((column) => column.name));
+  if (!columns.has("progress_events_json")) database.exec("ALTER TABLE model_digest_runs ADD COLUMN progress_events_json TEXT NOT NULL DEFAULT '[]'");
+  if (!columns.has("deleted_at")) database.exec("ALTER TABLE model_digest_runs ADD COLUMN deleted_at TEXT");
+  database.exec(sql);
 }
 
 function identifyImageMime(bytes: Buffer): "image/jpeg" | "image/png" | "image/webp" | null {
@@ -288,6 +295,27 @@ const migrations: Migration[] = [
     run: (database, readMigration) => database.exec(readMigration(
       new URL("./migrations/007_password_manager.sql", import.meta.url),
       new URL("../../src/db/migrations/007_password_manager.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 8,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/008_profile_emails.sql", import.meta.url),
+      new URL("../../src/db/migrations/008_profile_emails.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 9,
+    run: (database, readMigration) => database.exec(readMigration(
+      new URL("./migrations/009_model_digest.sql", import.meta.url),
+      new URL("../../src/db/migrations/009_model_digest.sql", import.meta.url)
+    ))
+  },
+  {
+    version: 10,
+    run: (database, readMigration) => migrateModelDigestHistory(database, readMigration(
+      new URL("./migrations/010_model_digest_history.sql", import.meta.url),
+      new URL("../../src/db/migrations/010_model_digest_history.sql", import.meta.url)
     ))
   }
 ];

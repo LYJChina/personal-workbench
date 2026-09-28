@@ -33,9 +33,14 @@ import type {
   PluginSummary,
   SettingsResponse,
   Theme,
-  VaultStatus
-  ,AppearancePreference
-  ,AppearanceSettings
+  VaultStatus,
+  ModelDigestOverview,
+  ModelDigestHistoryPage,
+  ModelDigestRun,
+  ModelDigestSettingsUpdate,
+  StartModelDigestRun,
+  AppearancePreference,
+  AppearanceSettings
 } from "@workbench/contracts";
 import {
   WORKBENCH_MUTATION_HEADER_NAME,
@@ -295,6 +300,19 @@ export const api = {
     body: JSON.stringify({ content })
   }),
   getReminder: () => requestJson<Reminder>("/reminders/outbound-checkin"),
+  getModelDigest: () => requestJson<ModelDigestOverview>("/model-digest"),
+  updateModelDigestSettings: (input: ModelDigestSettingsUpdate) => requestJson<ModelDigestOverview["settings"]>("/model-digest/settings", {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
+  }),
+  startModelDigestRun: (input: StartModelDigestRun) => requestJson<{ runId: string }>("/model-digest/runs", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input)
+  }),
+  getModelDigestRun: (id: string) => requestJson<ModelDigestRun>(`/model-digest/runs/${encodeURIComponent(id)}`),
+  listModelDigestRuns: (limit = 20, offset = 0) => requestJson<ModelDigestHistoryPage>(`/model-digest/runs?limit=${limit}&offset=${offset}`),
+  listModelDigestTrash: (limit = 20, offset = 0) => requestJson<ModelDigestHistoryPage>(`/model-digest/trash?limit=${limit}&offset=${offset}`),
+  getDeletedModelDigestRun: (id: string) => requestJson<ModelDigestRun>(`/model-digest/trash/${encodeURIComponent(id)}`),
+  deleteModelDigestRun: (id: string) => requestVoid(`/model-digest/runs/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  restoreModelDigestRun: (id: string) => requestJson<ModelDigestRun>(`/model-digest/trash/${encodeURIComponent(id)}/restore`, { method: "POST" }),
   updateReminder: (input: ReminderUpdate) => requestJson<Reminder>("/reminders/outbound-checkin", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

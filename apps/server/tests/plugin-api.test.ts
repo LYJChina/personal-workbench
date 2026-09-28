@@ -21,6 +21,7 @@ const pluginIds = [
   "lyj.system.ai-chat",
   "lyj.system.ai-polish",
   "lyj.system.daily-reports",
+  "lyj.system.model-digest",
   "lyj.system.password-manager",
   "lyj.system.reminders",
   "lyj.system.workday-calendar"
@@ -54,6 +55,21 @@ const expectedContributions = [
     contribution: {
       type: "route", id: "daily-report-page", path: "/ai-office/daily-report",
       component: "system.daily-reports.page"
+    }
+  },
+  {
+    pluginId: "lyj.system.model-digest",
+    contribution: {
+      type: "route", id: "model-digest-page", path: "/ai-office/model-digest",
+      component: "system.model-digest.page"
+    }
+  },
+  {
+    pluginId: "lyj.system.model-digest",
+    contribution: {
+      type: "ai-tool", id: "model-digest", label: "模型总结",
+      description: "汇总 Hugging Face 趋势模型和 OpenRouter 周榜，支持即时查看与工作日邮件。",
+      path: "/ai-office/model-digest", icon: "sparkles", position: 30
     }
   },
   {
@@ -104,7 +120,7 @@ const expectedContributions = [
 
 const contributionPluginOrder = new Map([
   ["lyj.system.ai-chat", 0], ["lyj.system.ai-polish", 1], ["lyj.system.daily-reports", 2],
-  ["lyj.system.password-manager", 3], ["lyj.system.reminders", 4], ["lyj.system.workday-calendar", 5]
+  ["lyj.system.model-digest", 3], ["lyj.system.password-manager", 4], ["lyj.system.reminders", 5], ["lyj.system.workday-calendar", 6]
 ]);
 expectedContributions.sort((left, right) => (contributionPluginOrder.get(left.pluginId) ?? 99) - (contributionPluginOrder.get(right.pluginId) ?? 99));
 
@@ -121,9 +137,9 @@ describe("compiled system plugin API", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("exports five deeply immutable validated manifests in stable plugin-ID order", () => {
+  it("exports seven deeply immutable validated manifests in stable plugin-ID order", () => {
     expect([...compiledSystemPluginManifests.map((manifest) => manifest.id)].sort()).toEqual([...pluginIds].sort());
-    expect(compiledSystemPluginManifests).toHaveLength(6);
+    expect(compiledSystemPluginManifests).toHaveLength(7);
     expect(Object.isFrozen(compiledSystemPluginManifests)).toBe(true);
     for (const manifest of compiledSystemPluginManifests) {
       expect(manifest).toMatchObject({
@@ -141,7 +157,7 @@ describe("compiled system plugin API", () => {
     }
   });
 
-  it("reconciles and starts exactly the five compiled manifests before the first guarded response", async () => {
+  it("reconciles and starts exactly the seven compiled manifests before the first guarded response", async () => {
     const app = createApp({ dataDir });
 
     const response = await request(app).get("/api/plugins").expect(200);
@@ -545,7 +561,7 @@ describe("compiled system plugin API", () => {
 
     const safeApp = createApp({ dataDir });
     const paused = await request(safeApp).get("/api/plugins").expect(200);
-    expect(paused.body).toHaveLength(6);
+    expect(paused.body).toHaveLength(7);
     expect(paused.body.every((summary: { enabled: boolean; runtimeStatus: string }) =>
       summary.enabled && summary.runtimeStatus === "safe-mode"
     )).toBe(true);

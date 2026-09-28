@@ -28,7 +28,7 @@ describe("AI connection database migration", () => {
 
     const upgraded = openDatabase(paths);
     try {
-      expect(upgraded.pragma("user_version", { simple: true })).toBe(7);
+      expect(upgraded.pragma("user_version", { simple: true })).toBe(10);
       expect(upgraded.prepare(`SELECT id, name, protocol, base_url, model, secret_name, is_default
         FROM ai_connections`).get()).toEqual({
         id: "legacy-deepseek",

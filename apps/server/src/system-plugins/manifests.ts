@@ -56,6 +56,33 @@ const compiledManifestInputs = [
   },
   {
     manifestVersion: 1,
+    id: "lyj.system.model-digest",
+    name: "模型总结",
+    version: "1.0.0",
+    author: "LYJ Workbench",
+    kind: "system",
+    platforms: ["win32", "darwin"],
+    permissions: ["ai:use", "profile:read", "mail:send"],
+    contributions: [
+      {
+        type: "route",
+        id: "model-digest-page",
+        path: "/ai-office/model-digest",
+        component: "system.model-digest.page"
+      },
+      {
+        type: "ai-tool",
+        id: "model-digest",
+        label: "模型总结",
+        description: "汇总 Hugging Face 趋势模型和 OpenRouter 周榜，支持即时查看与工作日邮件。",
+        path: "/ai-office/model-digest",
+        icon: "sparkles",
+        position: 30
+      }
+    ]
+  },
+  {
+    manifestVersion: 1,
     id: "lyj.system.daily-reports",
     name: "日报生成",
     version: "1.0.0",
